@@ -1,0 +1,357 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================
+   IMAGINE - Global Styles
+   IDE de la pensée augmentée
+   ======================================== */
+
+:root {
+  /* Palette cognitive */
+  --imagine-bg: #0B0F14;
+  --imagine-bg-light: #0F1419;
+  --imagine-bg-elevated: #151B23;
+  --imagine-nebula: #1E3A5F;
+  --imagine-intuition: #5B4B8A;
+  --imagine-projection: #4FD1C5;
+  --imagine-text: #E6EDF3;
+  --imagine-text-muted: #8B949E;
+  --imagine-text-subtle: #484F58;
+  --imagine-spark: #FFB347;
+  --imagine-forge: #FF6B6B;
+  --imagine-drift: #A78BFA;
+  
+  /* Animations */
+  --transition-breath: 300ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transition-gentle: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 600ms cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--imagine-bg);
+  color: var(--imagine-text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========================================
+   Base Layer
+   ======================================== */
+
+@layer base {
+  /* Selection */
+  ::selection {
+    background-color: rgba(79, 209, 197, 0.3);
+    color: var(--imagine-text);
+  }
+
+  /* Scrollbar - Minimal */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--imagine-text-subtle);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--imagine-text-muted);
+  }
+
+  /* Focus visible */
+  :focus-visible {
+    outline: 2px solid var(--imagine-projection);
+    outline-offset: 2px;
+  }
+
+  /* Remove default focus */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
+/* ========================================
+   Component Layer
+   ======================================== */
+
+@layer components {
+  /* Canvas container */
+  .canvas-container {
+    @apply w-full h-full overflow-hidden relative;
+    background: radial-gradient(
+      ellipse at center,
+      var(--imagine-bg-light) 0%,
+      var(--imagine-bg) 70%
+    );
+  }
+
+  /* Node base */
+  .node {
+    @apply absolute rounded-xl transition-all;
+    transition: transform var(--transition-gentle), 
+                box-shadow var(--transition-gentle),
+                opacity var(--transition-breath);
+  }
+
+  .node:hover {
+    @apply shadow-node-active;
+    transform: scale(1.02);
+  }
+
+  .node.selected {
+    @apply ring-2 ring-imagine-projection/50;
+  }
+
+  /* Edge (link) */
+  .edge {
+    pointer-events: none;
+  }
+
+  .edge-line {
+    stroke: var(--imagine-intuition);
+    stroke-width: 2;
+    fill: none;
+    opacity: 0.6;
+    transition: stroke var(--transition-breath),
+                opacity var(--transition-breath);
+  }
+
+  .edge-line:hover {
+    stroke: var(--imagine-projection);
+    opacity: 1;
+  }
+
+  /* Glass effect */
+  .glass {
+    @apply bg-imagine-bg-elevated/80 backdrop-blur-md border border-white/5;
+  }
+
+  /* Glow effects */
+  .glow-projection {
+    box-shadow: 0 0 20px rgba(79, 209, 197, 0.3);
+  }
+
+  .glow-intuition {
+    box-shadow: 0 0 20px rgba(91, 75, 138, 0.3);
+  }
+
+  .glow-spark {
+    box-shadow: 0 0 20px rgba(255, 179, 71, 0.3);
+  }
+
+  /* Button base */
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all;
+    transition: all var(--transition-breath);
+  }
+
+  .btn-primary {
+    @apply bg-imagine-projection text-imagine-bg hover:bg-imagine-projection-light;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-imagine-text-muted hover:text-imagine-text hover:bg-white/5;
+  }
+
+  .btn-subtle {
+    @apply bg-imagine-bg-elevated text-imagine-text-muted hover:text-imagine-text;
+  }
+
+  /* Input base */
+  .input {
+    @apply w-full px-4 py-3 rounded-lg bg-imagine-bg-elevated border border-white/5;
+    @apply text-imagine-text placeholder:text-imagine-text-subtle;
+    @apply focus:border-imagine-projection/50 focus:ring-1 focus:ring-imagine-projection/20;
+    @apply transition-all;
+    transition: all var(--transition-breath);
+  }
+
+  /* Panel */
+  .panel {
+    @apply glass rounded-xl p-4;
+  }
+
+  /* Floating UI */
+  .floating {
+    @apply glass rounded-xl shadow-lg;
+    animation: fadeIn 0.3s ease-out;
+  }
+}
+
+/* ========================================
+   Utility Layer
+   ======================================== */
+
+@layer utilities {
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(
+      135deg,
+      var(--imagine-projection) 0%,
+      var(--imagine-intuition) 100%
+    );
+  }
+
+  /* Breathing animation */
+  .breathing {
+    animation: breathe 4s ease-in-out infinite;
+  }
+
+  /* Float animation */
+  .floating-slow {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  /* Fade in animation */
+  .fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+
+  /* Slide up animation */
+  .slide-up {
+    animation: slideUp 0.4s ease-out forwards;
+  }
+
+  /* No select */
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Cursor grab */
+  .cursor-grab {
+    cursor: grab;
+  }
+
+  .cursor-grabbing {
+    cursor: grabbing;
+  }
+}
+
+/* ========================================
+   Keyframes
+   ======================================== */
+
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(79, 209, 197, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(79, 209, 197, 0.4);
+  }
+}
+
+/* ========================================
+   Canvas Background Grid
+   ======================================== */
+
+.canvas-grid {
+  background-image: 
+    radial-gradient(circle at 1px 1px, var(--imagine-text-subtle) 1px, transparent 0);
+  background-size: 40px 40px;
+  opacity: 0.3;
+}
+
+/* ========================================
+   Nebula Background Effect
+   ======================================== */
+
+.nebula-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.nebula-bg::before,
+.nebula-bg::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.15;
+  animation: float 20s ease-in-out infinite;
+}
+
+.nebula-bg::before {
+  width: 600px;
+  height: 600px;
+  background: var(--imagine-nebula);
+  top: -200px;
+  left: -200px;
+  animation-delay: -5s;
+}
+
+.nebula-bg::after {
+  width: 500px;
+  height: 500px;
+  background: var(--imagine-intuition);
+  bottom: -150px;
+  right: -150px;
+  animation-delay: -10s;
+}
