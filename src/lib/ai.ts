@@ -84,12 +84,41 @@ interface GroqResponse {
 }
 
 // ========================================
+// JSON extraction helpers
+// ========================================
+
+function parseJsonContent(raw: string): string {
+  let content = raw.trim();
+  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) content = fenced[1].trim();
+
+  if (!content.startsWith('{') && !content.startsWith('[')) {
+    const start = content.search(/[[{]/);
+    const end = Math.max(content.lastIndexOf('}'), content.lastIndexOf(']'));
+    if (start !== -1 && end > start) {
+      content = content.slice(start, end + 1);
+    }
+  }
+
+  return content;
+}
+
+function safeJsonParse(raw: string): any {
+  try {
+    return JSON.parse(parseJsonContent(raw));
+  } catch (error) {
+    console.error('[Groq] JSON parse error:', error, '\nRaw:', raw?.slice(0, 500));
+    return {};
+  }
+}
+
+// ========================================
 // Groq AI Service Class
 // ========================================
 
 class GroqAIService {
   private apiEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
-  private model = 'llama-3.3-70b-versatile';
+  private model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 
   private async callGroq(
     messages: GroqMessage[],
@@ -167,11 +196,23 @@ class GroqAIService {
         {
           role: 'system',
           content: `Tu es un assistant d'analyse cognitive pour IMAGINE, un IDE de pensée augmentée. 
-Analyse les idées fournies et retourne un JSON avec:
-- themes: liste des thèmes principaux (max 5)
-- keywords: mots-clés importants (max 10)
-- suggestedLinks: connexions potentielles entre nœuds avec { fromNodeId, toNodeId, reason, confidence (0-1) }
-- reformulations: suggestions de reformulation pour améliorer la clarté
+Analyse les idées fournies et retourne STRICTEMENT ce JSON, sans texte autour, sans markdown :
+{
+  "themes": ["thème1", "thème2"],
+  "keywords": ["mot-clé1", "mot-clé2"],
+  "suggestedLinks": [
+    { "fromNodeId": "<id exact>", "toNodeId": "<id exact>", "reason": "explication courte", "confidence": 0.0, "label": "verbe court" }
+  ],
+  "reformulations": [
+    { "nodeId": "<id exact>", "original": "texte d'origine", "suggestion": "texte reformulé" }
+  ]
+}
+
+Contraintes:
+- themes: max 5, keywords: max 10
+- suggestedLinks et reformulations sont des TABLEAUX d'objets (jamais des objets ni des tableaux de chaînes)
+- fromNodeId / toNodeId / nodeId doivent être les identifiants fournis tels quels, jamais des index
+- n'invente aucun identifiant qui ne figure pas dans les idées fournies
 
 Réponds UNIQUEMENT avec du JSON valide, sans markdown.`,
         },
@@ -182,13 +223,39 @@ Réponds UNIQUEMENT avec du JSON valide, sans markdown.`,
       ], { temperature: 0.5 });
 
       const content = response.choices[0]?.message?.content || '{}';
-      const parsed = JSON.parse(content);
-      
+      const parsed = safeJsonParse(content);
+
+      const validIds = new Set(textNodes.map(n => n.id));
+      const toStringArray = (value: unknown): string[] =>
+        Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+
+      const suggestedLinks = Array.isArray(parsed.suggestedLinks)
+        ? parsed.suggestedLinks
+            .filter((l: any) => validIds.has(l?.fromNodeId) && validIds.has(l?.toNodeId))
+            .map((l: any) => ({
+              fromNodeId: l.fromNodeId,
+              toNodeId: l.toNodeId,
+              reason: typeof l.reason === 'string' ? l.reason : '',
+              confidence: typeof l.confidence === 'number' ? l.confidence : 0.5,
+              label: typeof l.label === 'string' ? l.label : undefined,
+            }))
+        : [];
+
+      const reformulations = Array.isArray(parsed.reformulations)
+        ? parsed.reformulations
+            .filter((r: any) => validIds.has(r?.nodeId) && typeof r?.suggestion === 'string')
+            .map((r: any) => ({
+              nodeId: r.nodeId,
+              original: typeof r.original === 'string' ? r.original : '',
+              suggestion: r.suggestion,
+            }))
+        : [];
+
       return {
-        themes: parsed.themes || [],
-        keywords: parsed.keywords || [],
-        suggestedLinks: parsed.suggestedLinks || [],
-        reformulations: parsed.reformulations || [],
+        themes: toStringArray(parsed.themes).slice(0, 5),
+        keywords: toStringArray(parsed.keywords).slice(0, 10),
+        suggestedLinks,
+        reformulations,
       };
     } catch (error) {
       console.error('[Groq] Analyze error:', error);
@@ -238,7 +305,7 @@ Max 3 suggestions. Réponds UNIQUEMENT en JSON valide.`,
         },
       ], { temperature: 0.8, maxTokens: 1024 });
 
-      const parsed = JSON.parse(response.choices[0]?.message?.content || '{"suggestions":[]}');
+      const parsed = safeJsonParse(response.choices[0]?.message?.content || '{"suggestions":[]}');
       
       return (parsed.suggestions || []).map((s: any) => ({
         id: generateId(),
@@ -406,7 +473,7 @@ Max 5 matches avec similarity > 0.3. JSON uniquement.`,
         },
       ], { temperature: 0.3, maxTokens: 512 });
 
-      const parsed = JSON.parse(response.choices[0]?.message?.content || '{"matches":[]}');
+      const parsed = safeJsonParse(response.choices[0]?.message?.content || '{"matches":[]}');
       
       return (parsed.matches || [])
         .filter((m: any) => m.index < otherNodes.length)
@@ -516,7 +583,7 @@ Max 4 suggestions. JSON uniquement.`,
         },
       ], { temperature: 0.6, maxTokens: 512 });
 
-      const parsed = JSON.parse(response.choices[0]?.message?.content || '{"suggestions":[]}');
+      const parsed = safeJsonParse(response.choices[0]?.message?.content || '{"suggestions":[]}');
       return parsed.suggestions || [{
         label: 'lié à',
         type: 'semantic',
@@ -591,7 +658,7 @@ Sois précis et pertinent. JSON uniquement.`,
         },
       ], { temperature: 0.5, maxTokens: 512 });
 
-      const parsed = JSON.parse(response.choices[0]?.message?.content || '{}');
+      const parsed = safeJsonParse(response.choices[0]?.message?.content || '{}');
       return {
         tags: parsed.tags || [],
         keywords: parsed.keywords || [],
@@ -674,7 +741,7 @@ Max 5 connexions les plus pertinentes. JSON uniquement.`,
         },
       ], { temperature: 0.5, maxTokens: 1024 });
 
-      const parsed = JSON.parse(response.choices[0]?.message?.content || '{"connections":[]}');
+      const parsed = safeJsonParse(response.choices[0]?.message?.content || '{"connections":[]}');
       
       return (parsed.connections || [])
         .filter((c: any) => c.fromIndex < textNodes.length && c.toIndex < textNodes.length)
