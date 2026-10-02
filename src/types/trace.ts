@@ -98,10 +98,32 @@ export interface DescentEntry {
   model: string;
 }
 
+/**
+ * Un embranchement : le point où une trajectoire aurait pu prendre un
+ * autre chemin, et le chemin effectivement pris.
+ * C'est ce qui distingue une vraie exploration d'une simple pile de cartes.
+ */
+export interface BranchPoint {
+  id: string;
+  /** Question ouverte qui a été tranchée ici */
+  question: string;
+  /** L'alternative qui n'a pas été prise */
+  alternative: string;
+  /** Le choix retenu */
+  chosen: string;
+  /** Ce qu'on perd en ne prenant pas l'alternative */
+  costOfChoice: string;
+  createdAt: string;
+  /** Passages de la trajectoire antérieurs à ce point */
+  atEntryIndex: number;
+}
+
 export interface ThoughtPath extends PathMoves {
   id: string;
   traceId: string;
   parentPathId: string | null;
+  /** Racine de la sous-trajectoire, pour le repliement dans le journal */
+  rootPathId: string | null;
   color: string;
   title: string;
   thesis: string;
@@ -109,6 +131,7 @@ export interface ThoughtPath extends PathMoves {
   status: PathStatus;
   depth: number;
   timeline: DescentEntry[];
+  branches: BranchPoint[];
   scores: PathScores | null;
   createdAt: string;
   updatedAt: string;
@@ -171,6 +194,7 @@ export type TraceEventKind =
   | 'correction'
   | 'projection'
   | 'descent'
+  | 'branch'
   | 'elimination'
   | 'confrontation'
   | 'verdict'
@@ -255,6 +279,23 @@ export interface DescentPayload {
   costs: string;
   unknowns: string[];
   wall: string;
+  /** Point de bifurcation détecté par le moteur, s'il en existe un */
+  branch?: {
+    question: string;
+    option: string;
+    taken: string;
+    tradeoff: string;
+  };
+}
+
+export interface BranchRequest {
+  spark: string;
+  path: { title: string; thesis: string; angle: string; keyMoves: string[] };
+  timeline: Array<{ question: string; analysis: string; wall: string }>;
+  /** Point de la trajectoire où l'on bifurque */
+  atEntryIndex: number;
+  /** Alternative imposée par l'utilisateur */
+  seed?: string;
 }
 
 export interface ConfrontationPayload {

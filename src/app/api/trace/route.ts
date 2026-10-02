@@ -101,7 +101,34 @@ export async function POST(request: NextRequest) {
       }
 
       // ------------------------------------------------
-      // 4. CONFRONTATION
+      // 4. BIFURCATION
+      // ------------------------------------------------
+      case 'forkPath': {
+        const path = data?.path;
+        if (!path) {
+          return NextResponse.json(
+            { success: false, error: 'Aucune trajectoire à bifurquer' },
+            { status: 400 }
+          );
+        }
+        const fork = await traceAI.forkPath({
+          spark: data?.spark || '',
+          path: {
+            title: path.title || '',
+            thesis: path.thesis || '',
+            angle: path.angle || '',
+            keyMoves: Array.isArray(path.keyMoves) ? path.keyMoves : [],
+          },
+          timeline: Array.isArray(data?.timeline) ? data.timeline : [],
+          atEntryIndex:
+            typeof data?.atEntryIndex === 'number' ? data.atEntryIndex : 0,
+          seed: data?.seed || '',
+        });
+        return NextResponse.json({ success: true, result: fork });
+      }
+
+      // ------------------------------------------------
+      // 5. CONFRONTATION
       // ------------------------------------------------
       case 'comparePaths': {
         const paths = Array.isArray(data?.paths) ? data.paths : [];
@@ -131,7 +158,7 @@ export async function POST(request: NextRequest) {
       }
 
       // ------------------------------------------------
-      // 5. ARBITRAGE
+      // 6. ARBITRAGE
       // ------------------------------------------------
       case 'arbitrate': {
         const paths = Array.isArray(data?.paths) ? data.paths : [];
@@ -180,6 +207,7 @@ export async function GET() {
       'readIdea',
       'projectPaths',
       'deepenPath',
+      'forkPath',
       'comparePaths',
       'arbitrate',
     ],

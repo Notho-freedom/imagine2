@@ -28,6 +28,7 @@ const EVENT_COLOR: Record<TraceEventKind, string> = {
   correction: '#8B949E',
   projection: '#A78BFA',
   descent: '#60A5FA',
+  branch: '#A78BFA',
   elimination: '#8B949E',
   confrontation: '#FFB347',
   verdict: '#34D399',

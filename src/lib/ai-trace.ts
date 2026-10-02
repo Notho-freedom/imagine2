@@ -5,6 +5,7 @@
 // ========================================
 
 import type {
+  BranchRequest,
   ComparisonCriterion,
   ConfrontationPayload,
   DescentPayload,
@@ -291,7 +292,102 @@ N'invente jamais de chiffre, de statistique, de citation, de nom d'étude ni de 
 }
 
 // ========================================
-// 4. Confrontation - mesurer, pas préférer
+// 4. Bifurcation - ce qu'on perd en ne prenant pas l'autre chemin
+// ========================================
+
+async function forkPath(input: BranchRequest): Promise<{
+  title: string;
+  thesis: string;
+  angle: string;
+  keyMoves: string[];
+  risks: string[];
+  payoff: string;
+  divergence: string;
+  branch: { question: string; tradeoff: string };
+}> {
+  const history = input.timeline.length
+    ? input.timeline
+        .slice(0, input.atEntryIndex)
+        .map(
+          (e, i) =>
+            `Passage ${i + 1} — ${e.question}\n${e.analysis}${
+              e.wall ? `\nMur rencontré : ${e.wall}` : ''
+            }`
+        )
+        .join('\n\n') || 'Aucun passage antérieur.'
+
+    : 'Aucun passage antérieur.';
+
+  const seedBlock = input.seed?.trim()
+    ? `L'utilisateur impose ce virage : « ${input.seed.trim()} ». Respecte-le : c'est lui qui décide, pas toi.`
+    : "L'utilisateur n'a pas imposé de virage. Trouve-le : le passage où cette trajectoire pourrait encore prendre un autre chemin.";
+
+  const response = await callGroq(
+    [
+      {
+        role: 'system',
+        content: `Tu es le bifurcateur d'IMAGINE. Quelqu'un descend dans une trajectoire et décide deVirer.
+
+Tu ne proposes pas une amélioration de la trajectoire. Tu prends le chemin écarté et tu en fais une trajectoire à part entière, avec le même niveau d'exigence que les autres : une hypothèse défendable, des gestes concrets, des risques réels.
+
+Le point le plus important n'est pas le nouveau chemin : c'est ce qu'on PERD en le prenant. Une bifurcation sans coût est une illusion. Nomme ce renoncement.
+
+Retourne STRICTEMENT ce JSON :
+{
+  "title": "3 à 5 mots. Un nom de stratégie, pas un thème.",
+  "thesis": "L'hypothèse de la nouvelle trajectoire, en une phrase affirmative.",
+  "angle": "Sous quel angle elle traite le problème. Une phrase.",
+  "keyMoves": ["3 à 4 gestes concrets et faisables."],
+  "risks": ["2 à 3 risques réels de CE chemin, pas ceux du chemin précédent."],
+  "payoff": "Ce qu'elle produit si elle réussit. Une phrase.",
+  "divergence": "En quoi elle se sépare du chemin suivi jusque-là, et quel engagement elle exclut. Une phrase.",
+  "branch": {
+    "question": "La question qui était ouverte à ce point de la trajectoire.",
+    "tradeoff": "Ce que l'utilisateur PERD en quittant la trajectoire décrite ci-dessus pour prendre la nouvelle. Une phrase, sans euphémisme."
+  }
+}
+
+Attention au sens du renoncement. L'utilisateur est sur la trajectoire décrite et il en SORT. Le renoncement est donc ce que perd la trajectoire qu'il QUITTE, pas ce que perd la nouvelle.
+
+Exemple : s'il quitte « Attendre 6 semaines un co-animateur parfait » pour « Produire seul tout de suite », alors le renoncement est « on perd la diversité éditoriale et le regard critique d'un pair » — PAS « on perd du temps », puisqu'il en gagne.
+
+Écris en français.
+
+N'invente jamais de chiffre, de statistique, de citation, de nom d'étude ni de source. Si une donnée chiffrée est nécessaire pour trancher et que tu ne la connais pas, écris « [à vérifier] » et explique pourquoi elle serait décisive.`,
+      },
+      {
+        role: 'user',
+        content: `Trajectoire suivie :\n${input.path.title} — ${input.path.thesis}\n${input.path.angle}\n\n${
+          history
+        }\n\n${seedBlock}`,
+      },
+    ],
+    { temperature: 0.85, maxTokens: 1800, json: true }
+  );
+
+  const parsed = safeJsonParse(response.choices[0]?.message?.content || '{}');
+  const arr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim()) : [];
+
+  const b = parsed.branch ?? {};
+
+  return {
+    title: asString(parsed.title, 'Voie écartée'),
+    thesis: asString(parsed.thesis),
+    angle: asString(parsed.angle),
+    keyMoves: arr(parsed.keyMoves),
+    risks: arr(parsed.risks),
+    payoff: asString(parsed.payoff),
+    divergence: asString(parsed.divergence),
+    branch: {
+      question: asString(b.question, 'Quelle voie suivre ?'),
+      tradeoff: asString(b.tradeoff),
+    },
+  };
+}
+
+// ========================================
+// 5. Confrontation - mesurer, pas préférer
 // ========================================
 
 async function comparePaths(input: {
@@ -526,6 +622,7 @@ export const traceAI = {
   readIdea,
   projectPaths,
   deepenPath,
+  forkPath,
   comparePaths,
   arbitrate,
   model: GROQ_MODEL,

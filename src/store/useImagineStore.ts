@@ -21,7 +21,8 @@ import type {
   ReadingFeedback,
   Confrontation,
   Verdict,
-  DescentEntry,
+DescentEntry,
+  BranchPoint,
   PathPayload,
   TraceEvent,
 } from '@/types';
@@ -144,7 +145,11 @@ interface ImagineState {
   setReading: (traceId: string, reading: IdeaReading) => void;
   patchReading: (traceId: string, patch: Partial<IdeaReading>) => void;
   setReadingFeedback: (traceId: string, feedback: ReadingFeedback) => void;
-  addPaths: (traceId: string, payloads: PathPayload[]) => void;
+  addPaths: (
+    traceId: string,
+    payloads: PathPayload[],
+    parent?: { pathId: string; entryIndex: number; branch: BranchPoint }
+  ) => string[];
   updatePath: (traceId: string, pathId: string, updates: Partial<ThoughtPath>) => void;
   setPathStatus: (traceId: string, pathId: string, status: ThoughtPath['status']) => void;
   addDescent: (traceId: string, pathId: string, entry: Omit<DescentEntry, 'id' | 'pathId' | 'createdAt'>) => void;
@@ -807,17 +812,26 @@ export const useImagineStore = create<ImagineState>()(
           });
         },
 
-        addPaths: (traceId, payloads) => {
+        addPaths: (traceId, payloads, parent) => {
+          const created: string[] = [];
           set((state) => {
             const trace = state.traces.find((t) => t.id === traceId);
             if (!trace) return;
 
+            const parentPath = parent
+              ? trace.paths.find((p) => p.id === parent.pathId)
+              : undefined;
+
             for (const p of payloads) {
               const now = touch();
+              const id = generateId();
+              created.push(id);
+
               trace.paths.push({
-                id: generateId(),
+                id,
                 traceId,
-                parentPathId: null,
+                parentPathId: parentPath?.id ?? null,
+                rootPathId: parentPath?.rootPathId ?? parentPath?.id ?? null,
                 color: nextPathColor(trace.paths),
                 title: p.title,
                 thesis: p.thesis,
@@ -827,17 +841,31 @@ export const useImagineStore = create<ImagineState>()(
                 payoff: p.payoff,
                 divergence: p.divergence,
                 status: 'open',
-                depth: 0,
+                depth: parentPath ? parentPath.depth + 1 : 0,
                 timeline: [],
+                branches: [],
                 scores: null,
                 createdAt: now,
                 updatedAt: now,
-                origin: 'ai',
+                origin: parentPath ? 'user' : 'ai',
               });
+            }
+
+            // L'alternative reste attachée au point de bifurcation
+            if (parentPath && parent) {
+              parentPath.branches.push({
+                ...parent.branch,
+                id: generateId(),
+                atEntryIndex: parent.entryIndex,
+                chosen: parent.branch.chosen || parentPath.title,
+                createdAt: touch(),
+              });
+              parentPath.updatedAt = touch();
             }
 
             trace.updatedAt = touch();
           });
+          return created;
         },
 
         updatePath: (traceId, pathId, updates) => {

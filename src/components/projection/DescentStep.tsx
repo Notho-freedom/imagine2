@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
   ChevronRight,
+  GitBranch,
   Loader2,
   Send,
   Trash2,
@@ -20,7 +21,7 @@ import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
 import { cn } from '@/lib/utils';
 import { Bullets, Button, ErrorNote, Panel, Section, Tag, Thinking } from './ui';
-import type { DescentEntry, ThoughtPath } from '@/types';
+import type { BranchPoint, DescentEntry, ThoughtPath } from '@/types';
 
 // ========================================
 // Sélecteur de trajectoires
@@ -196,6 +197,65 @@ function Entry({
 }
 
 // ========================================
+// Un embranchement
+// ========================================
+
+function Branch({
+  branch,
+  color,
+  onFork,
+}: {
+  branch: BranchPoint;
+  color: string;
+  onFork: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-lg border px-4 py-3 space-y-2"
+      style={{ borderColor: 'rgba(167,139,250,0.3)', background: 'rgba(167,139,250,0.06)' }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-imagine-drift/70 flex items-center gap-1.5">
+            <GitBranch className="w-3 h-3" />
+            Point de bifurcation
+          </div>
+          <p className="text-sm text-imagine-text mt-1 leading-relaxed">{branch.question}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 text-xs">
+        <div className="space-y-0.5">
+          <div className="text-imagine-text-subtle">Écarté</div>
+          <p className="text-imagine-text-muted leading-relaxed">{branch.alternative}</p>
+        </div>
+        <div className="space-y-0.5">
+          <div className="text-imagine-text-subtle">Retenu</div>
+          <p className="text-imagine-text-muted leading-relaxed">{branch.chosen}</p>
+        </div>
+      </div>
+
+      {branch.costOfChoice && (
+        <p className="text-xs text-imagine-text-subtle leading-relaxed pt-1 border-t border-white/5">
+          <span className="text-imagine-forge/80">Ce qu&apos;on perd — </span>
+          {branch.costOfChoice}
+        </p>
+      )}
+
+      <button
+        onClick={onFork}
+        className="text-xs text-imagine-drift hover:text-imagine-text transition-colors flex items-center gap-1.5"
+      >
+        <GitBranch className="w-3.5 h-3.5" />
+        Explorer aussi ce chemin
+      </button>
+    </motion.div>
+  );
+}
+
+// ========================================
 // Étape
 // ========================================
 
@@ -205,20 +265,33 @@ export default function DescentStep() {
   const setActivePath = useImagineStore((s) => s.setActivePath);
   const setTraceStep = useImagineStore((s) => s.setTraceStep);
   const removeDescent = useImagineStore((s) => s.removeDescent);
-  const { descend, pending, error } = useTrace();
+  const { descend, fork, pending, error } = useTrace();
 
   const [probe, setProbe] = useState('');
+  const [forking, setForking] = useState<number | null>(null);
+  const [forkSeed, setForkSeed] = useState('');
 
   if (!trace) return null;
 
   const live = trace.paths.filter((p) => p.status !== 'eliminated');
   const path = trace.paths.find((p) => p.id === activePathId) ?? live[0] ?? trace.paths[0] ?? null;
+  const children = path
+    ? trace.paths.filter((p) => p.parentPathId === path.id)
+    : [];
 
   const handleDescend = async () => {
     if (!path) return;
     const q = probe.trim();
     setProbe('');
     await descend(path, q);
+  };
+
+  const handleFork = async (atEntryIndex: number, seed = '') => {
+    if (!path) return;
+    setForking(atEntryIndex);
+    setForkSeed('');
+    await fork(path, atEntryIndex, seed);
+    setForking(null);
   };
 
   if (live.length === 0) {
@@ -328,6 +401,14 @@ export default function DescentStep() {
               />
             )}
 
+            {pending === 'branch' && forking !== null && (
+              <Thinking
+                label="Bifurcation en cours"
+                detail="Ouverture du chemin écarté, et de ce qu'il coûte de l'abandonner."
+                color="#A78BFA"
+              />
+            )}
+
             {error && <ErrorNote message={error} />}
 
             {/* Journal de la trajectoire */}
@@ -345,15 +426,74 @@ export default function DescentStep() {
                 {path.timeline
                   .slice()
                   .reverse()
-                  .map((entry, i) => (
-                    <Entry
-                      key={entry.id}
-                      entry={entry}
-                      color={path.color}
-                      index={path.timeline.length - 1 - i}
-                      onRemove={() => removeDescent(trace.id, path.id, entry.id)}
+                  .map((entry, i) => {
+                    const realIndex = path.timeline.length - 1 - i;
+                    const branchHere = path.branches.filter(
+                      (b) => b.atEntryIndex === realIndex
+                    );
+                    return (
+                      <div key={entry.id}>
+                        <Entry
+                          entry={entry}
+                          color={path.color}
+                          index={realIndex + 1}
+                          onRemove={() => removeDescent(trace.id, path.id, entry.id)}
+                        />
+                        {branchHere.map((b) => (
+                          <Branch
+                            key={b.id}
+                            branch={b}
+                            color={path.color}
+                            onFork={() => handleFork(b.atEntryIndex, b.alternative)}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })}
+
+                {/* Bifurquer ici, maintenant */}
+                <button
+                  onClick={() => handleFork(path.timeline.length, forkSeed)}
+                  disabled={pending !== null}
+                  className="ml-7 mb-6 flex items-center gap-1.5 text-xs text-imagine-text-subtle hover:text-imagine-drift transition-colors disabled:opacity-40"
+                >
+                  <GitBranch className="w-3.5 h-3.5" />
+                  Virer maintenant — explorer le chemin écarté
+                </button>
+              </div>
+            )}
+
+            {/* Sous-trajectoires issues de ce virage */}
+            {children.length > 0 && (
+              <div className="space-y-2 pt-4 border-t border-white/5">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-imagine-text-subtle">
+                  Virages explorés depuis cette trajectoire
+                </div>
+                {children.map((child) => (
+                  <button
+                    key={child.id}
+                    onClick={() => setActivePath(child.id)}
+                    className="w-full flex items-start gap-3 rounded-lg border px-3.5 py-3 text-left transition-all hover:bg-white/[0.03]"
+                    style={{
+                      borderColor: `${child.color}44`,
+                      opacity: child.status === 'eliminated' ? 0.4 : 1,
+                    }}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+                      style={{ background: child.color }}
                     />
-                  ))}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-imagine-text">{child.title}</div>
+                      <div className="text-xs text-imagine-text-subtle mt-0.5 leading-snug line-clamp-2">
+                        {child.thesis}
+                      </div>
+                    </div>
+                    <span className="text-[10px] tabular-nums text-imagine-text-subtle shrink-0 mt-1">
+                      {child.timeline.length}
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
 

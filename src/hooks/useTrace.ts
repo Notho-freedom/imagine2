@@ -52,6 +52,7 @@ type PendingAction =
   | 'reading'
   | 'projection'
   | 'descent'
+  | 'branch'
   | 'confrontation'
   | 'verdict'
   | null;
@@ -309,7 +310,92 @@ setReading,
   );
 
   // ------------------------------------------------
-  // 4. Confrontation
+  // 4. Bifurcation
+  // ------------------------------------------------
+
+  const fork = useCallback(
+    async (path: ThoughtPath, atEntryIndex: number, seed = '') => {
+      if (!trace) return null;
+
+      const result = await run<{
+        title: string;
+        thesis: string;
+        angle: string;
+        keyMoves: string[];
+        risks: string[];
+        payoff: string;
+        divergence: string;
+        branch: { question: string; tradeoff: string };
+      }>('branch', () =>
+        callTrace('forkPath', {
+          spark: trace.spark,
+          path: {
+            title: path.title,
+            thesis: path.thesis,
+            angle: path.angle,
+            keyMoves: path.keyMoves,
+          },
+          timeline: path.timeline.map((e) => ({
+            question: e.question,
+            analysis: e.analysis,
+            wall: e.wall,
+          })),
+          atEntryIndex,
+          seed,
+        })
+      );
+
+      if (!result) return null;
+
+      const ids = addPaths(
+        trace.id,
+        [
+          {
+            title: result.title,
+            thesis: result.thesis,
+            angle: result.angle,
+            keyMoves: result.keyMoves,
+            risks: result.risks,
+            payoff: result.payoff,
+            divergence: result.divergence,
+          },
+        ],
+        {
+          pathId: path.id,
+          entryIndex: atEntryIndex,
+          // La structure fait foi : on part de `path`, on arrive sur la nouvelle.
+          // Les libellés du modèle ne sont pas fiables sur ce point, seul son
+          // raisonnement sur le renoncement l'est.
+          branch: {
+            id: '',
+            question: result.branch.question,
+            alternative: `${path.title} — ${path.thesis}`,
+            chosen: `${result.title} — ${result.thesis}`,
+            costOfChoice: result.branch.tradeoff,
+            atEntryIndex,
+            createdAt: new Date().toISOString(),
+          },
+        }
+      );
+
+      appendEvent(
+        makeEvent('branch', 'ai', `Bifurcation depuis « ${path.title} »`, {
+          detail: result.branch.tradeoff
+            ? `${result.branch.question} → ${result.title}. ${result.branch.tradeoff}`
+            : `${result.branch.question} → ${result.title}`,
+          pathId: path.id,
+          color: path.color,
+        })
+      );
+
+      if (ids[0]) setActivePath(ids[0]);
+      return result;
+    },
+    [trace, run, addPaths, appendEvent, setActivePath]
+  );
+
+  // ------------------------------------------------
+  // 5. Confrontation
   // ------------------------------------------------
 
   const confront = useCallback(async () => {
@@ -489,6 +575,7 @@ setReading,
     setNote,
     project,
     descend,
+    fork,
     confront,
     arbitrate,
     eliminate,

@@ -179,6 +179,7 @@ export const EVENT_LABEL: Record<TraceEventKind, string> = {
   correction: 'Correction de la lecture',
   projection: 'Projection des trajectoires',
   descent: 'Descente dans une trajectoire',
+  branch: 'Bifurcation',
   elimination: 'Trajectoire écartée',
   confrontation: 'Confrontation',
   verdict: 'Arbitrage',
@@ -230,6 +231,23 @@ function bullets(items: string[] | undefined): string {
 export function traceToMarkdown(trace: ThoughtTrace): string {
   const lines: string[] = [];
   const date = (iso: string) => new Date(iso).toLocaleString('fr-FR');
+
+  const indent = (path: ThoughtPath, depth: number) =>
+    `${'  '.repeat(depth)}- **${path.title}**${path.status === 'eliminated' ? ' *(écartée)*' : ''} — ${path.thesis}`;
+
+  /** Parcours en profondeur des sous-trajectoires */
+  const walk = (
+    parentId: string | null,
+    depth: number,
+    render: (p: ThoughtPath, depth: number) => void
+  ) => {
+    trace.paths
+      .filter((p) => p.parentPathId === parentId)
+      .forEach((p) => {
+        render(p, depth);
+        walk(p.id, depth + 1, render);
+      });
+  };
 
   lines.push(`# ${trace.title}`);
   lines.push('');
@@ -292,11 +310,12 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
   if (trace.paths.length > 0) {
     lines.push('## 3. Trajectoires');
     lines.push('');
-    trace.paths.forEach((p, i) => {
-      const tag = p.status === 'eliminated' ? ' *(écartée)*' : '';
-      lines.push(`### ${i + 1}. ${p.title}${tag}`);
-      lines.push('');
-      lines.push(`> ${p.thesis}`);
+
+    const hasChildren = trace.paths.some((p) => p.parentPathId !== null);
+
+    walk(null, 0, (p, depth) => {
+      const heading = depth === 0 ? '###' : '####';
+      lines.push(`${heading} ${indent(p, depth)}`);
       lines.push('');
       lines.push(`**Angle.** ${p.angle}`);
       lines.push('');
@@ -312,6 +331,31 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
       lines.push('');
       lines.push(`**En quoi elle diverge.** ${p.divergence}`);
       lines.push('');
+      if (!hasChildren) {
+        lines.push(`**Statut.** ${PATH_STATUS_LABEL[p.status]}`);
+        lines.push('');
+      }
+    });
+  }
+
+  const allBranched = trace.paths.filter((p) => p.branches.length > 0);
+  if (allBranched.length > 0) {
+    lines.push('### Points de bifurcation');
+    lines.push('');
+    lines.push(
+      'Les moments où un autre chemin était ouvert. Ce qui a été écarté, et ce que ça a coûté.'
+    );
+    lines.push('');
+    allBranched.forEach((p) => {
+      p.branches.forEach((b) => {
+        lines.push(`#### ${b.question}`);
+        lines.push('');
+        lines.push(`- **Écarté** : ${b.alternative}`);
+        lines.push(`- **Retenu** : ${b.chosen}`);
+        lines.push(`- **Ce qu'on perd** : ${b.costOfChoice || '—'}`);
+        lines.push(`- Moment : après le passage ${b.atEntryIndex + 1}`);
+        lines.push('');
+      });
     });
   }
 
