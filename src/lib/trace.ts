@@ -293,6 +293,71 @@ export function survivingPaths(paths: ThoughtPath[]): ThoughtPath[] {
 }
 
 // ========================================
+// Ce qu'on a réellement regardé
+//
+// Une note ne vaut que ce qui a été observé. Noter « impact » sur une
+// trajectoire qu'on n'a jamais descendue, c'est deviner en prenant l'air
+// de mesurer. Le niveau se lit dans le tracé lui-même : combien de
+// passages, et un mur atteint.
+// ========================================
+
+export type EvidenceLevel = 0 | 1 | 2 | 3;
+
+export interface PathEvidence {
+  level: EvidenceLevel;
+  label: string;
+  passages: number;
+  walls: number;
+  /** Demi-largeur de la fourchette, en points */
+  band: number;
+}
+
+const EVIDENCE: Record<
+  EvidenceLevel,
+  { label: string; band: number }
+> = {
+  0: { label: 'rien regardé', band: 35 },
+  1: { label: 'regardée', band: 22 },
+  2: { label: 'descendue', band: 12 },
+  3: { label: 'mur atteint', band: 6 },
+};
+
+export function evidenceLevel(path: ThoughtPath): EvidenceLevel {
+  const passages = path.timeline.length;
+  const walls = path.timeline.filter((e) => e.wall?.trim()).length;
+
+  if (passages === 0) return 0;
+  if (walls > 0) return 3;
+  if (passages >= 3) return 2;
+  return 1;
+}
+
+export function pathEvidence(path: ThoughtPath): PathEvidence {
+  const level = evidenceLevel(path);
+  const walls = path.timeline.filter((e) => e.wall?.trim()).length;
+  return {
+    level,
+    label: EVIDENCE[level].label,
+    passages: path.timeline.length,
+    walls,
+    band: EVIDENCE[level].band,
+  };
+}
+
+/** La trajectoire la moins documentée est celle qui plafonne le classement. */
+export function weakestEvidence(paths: ThoughtPath[]): PathEvidence | null {
+  if (paths.length === 0) return null;
+  return pathEvidence(
+    paths.reduce((a, b) => (evidenceLevel(a) <= evidenceLevel(b) ? a : b))
+  );
+}
+
+/** Un critère noté sur une trajectoire qu'on n'a pas regardée est une devinette. */
+export function isBlind(path: ThoughtPath): boolean {
+  return evidenceLevel(path) === 0;
+}
+
+// ========================================
 // Layout de l'arbre du tracé
 // Le flux est un arbre qui grandit vers la droite :
 // étincelle → trajectoires → descentes → virages
@@ -712,6 +777,7 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
     }
 
     const live = trace.paths.filter((p) => p.status !== 'eliminated');
+    const weak = weakestEvidence(live);
     lines.push(`| Critère | ${live.map((p) => p.title).join(' | ')} |`);
     lines.push(`|---|${live.map(() => '---').join('|')}|`);
     c.criteria.forEach((crit) => {
@@ -725,9 +791,21 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
     });
     lines.push(`| **Total pondéré** | ${live.map((p) => {
       const row = c.rows.find((r) => r.pathId === p.id);
-      return row ? String(weightedTotal(row.values, c.criteria)) : '—';
+      if (!row) return '—';
+      const total = weightedTotal(row.values, c.criteria);
+      const band = pathEvidence(p).band;
+      return band >= 12
+        ? `${total} (±${band}, ${pathEvidence(p).label})`
+        : `${total}`;
     }).join(' | ')} |`);
     lines.push('');
+
+    if (weak && weak.level < 3) {
+      lines.push(
+        `> **Ce qui n'a pas été regardé.** La trajectoire la moins documentée est « ${weak.label} ». La fourchette ci-dessus indique ce que sa note permet encore d'exclure : tant qu'elle est large, un écart de quelques points ne départage rien.`
+      );
+      lines.push('');
+    }
     lines.push(`**Synthèse.** ${c.synthesis}`);
     lines.push('');
     lines.push(`> Le discriminating : ${c.discriminator}`);

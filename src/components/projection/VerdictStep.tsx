@@ -10,6 +10,7 @@ import { motion } from 'framer-motion';
 import {
   ArrowRight,
   CircleCheck,
+  EyeOff,
   Flag,
   Loader2,
   RotateCcw,
@@ -19,7 +20,7 @@ import {
 import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
 import { Bullets, Button, ErrorNote, Panel, Quote, Section, Tag, Thinking } from './ui';
-import { CRITERION_DIRECTION } from '@/lib/trace';
+import { CRITERION_DIRECTION, weakestEvidence, isBlind } from '@/lib/trace';
 
 export default function VerdictStep() {
   const trace = useImagineStore((s) => s.traces.find((t) => t.id === s.activeTraceId));
@@ -58,6 +59,7 @@ export default function VerdictStep() {
   }
 
   const chosen = trace.paths.find((p) => p.id === v.recommendedPathId);
+  const live = trace.paths.filter((p) => p.status !== 'eliminated');
   const color = chosen?.color ?? '#34D399';
   const committed = trace.status === 'arbitrated';
   const loser = trace.paths.find((p) => p.id !== v.recommendedPathId);
@@ -159,6 +161,39 @@ export default function VerdictStep() {
           <span className="text-lg font-light">{v.closing}</span>
         </Quote>
       </motion.div>
+
+      {/* Sur quoi tranche-t-on ? */}
+      {trace.confrontation && live.length > 0 && (
+        <Panel className="p-4">
+          <div className="flex items-start gap-3">
+            <EyeOff className="w-4 h-4 mt-0.5 shrink-0 text-imagine-text-subtle" />
+            <div className="text-xs text-imagine-text-subtle leading-relaxed">
+              {(() => {
+                const weak = weakestEvidence(live);
+                if (!weak || weak.level >= 3) {
+                  return 'Toutes les trajectoires vivantes ont été descendues jusqu\'au mur. L\'arbitrage tranche sur de l\'observé.';
+                }
+                const blind = live.filter((p) => isBlind(p));
+                return (
+                  <>
+                    {blind.length > 0 ? (
+                      <>
+                        {blind.length} trajectoire{blind.length > 1 ? 's' : ''} n
+                        {blind.length > 1 ? ' ont' : ' a'} jamais été descendue
+                        {blind.length > 1 ? 's' : ''}. Leur classement repose sur des déductions.
+                      </>
+                    ) : (
+                      <>La moins documentée est « {weak.label} ».</>
+                    )}{' '}
+                    L&apos;arbitrage en tient compte — mais la décision reste un pari sur cette
+                    partie.
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </Panel>
+      )}
 
       {/* Validation */}
       {error && <ErrorNote message={error} />}

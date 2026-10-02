@@ -415,20 +415,31 @@ async function comparePaths(input: {
     return { criteria: input.criteria, rows: [], synthesis: '', discriminator: '' };
   }
 
-  const numbered = live
-    .map(
-      (p, i) =>
-        `Trajectoire ${i + 1}\nTitre : ${p.title}\nHypothèse : ${p.thesis}\nAngle : ${p.angle}\nProduit : ${p.payoff}\nRisques : ${p.risks.join(' ; ')}\n${
-          p.timeline.length
-            ? `Descentes réalisées :\n${p.timeline
-                .map(
-                  (e) =>
-                    `  - ${e.question} → ${e.analysis}${e.wall ? ` [mur : ${e.wall}]` : ''}`
-                )
-                .join('\n')}`
-            : 'Aucune descente réalisée.'
-        }`
-    )
+const numbered = live
+    .map((p, i) => {
+      const level = p.timeline.length === 0
+        ? 'AUCUNE DESCENTE — toutes ses notes sont des déductions tirées de son énoncé, pas des mesures.'
+        : p.timeline.some((e) => e.wall?.trim())
+          ? 'Descendue jusqu\'au mur.'
+          : `Descendue (${p.timeline.length} passages).`;
+
+      return `Trajectoire ${i + 1}
+Titre : ${p.title}
+Hypothèse : ${p.thesis}
+Angle : ${p.angle}
+Produit : ${p.payoff}
+Risques : ${p.risks.join(' ; ')}
+Ce que l'on sait d'elle : ${level}
+${
+  p.timeline.length
+    ? `Descentes réalisées :\n${p.timeline
+        .map(
+          (e) =>
+            `  - ${e.question} → ${e.analysis}${e.wall ? ` [mur : ${e.wall}]` : ''}`
+        ).join('\n')}`
+    : ''
+}`;
+    })
     .join('\n\n');
 
   const criteriaBlock = active
@@ -453,6 +464,8 @@ Règles :
 - Les notes vont de 0 à 100. Sois sévère : si tout est à 80, tu n'as rien mesuré. Utilise toute l'échelle.
 - Pour un critère où moins vaut mieux (coût, risque), 100 signifie « faible coût / faible risque ».
 - Chaque note porte une justification d'une phrase qui cite un élément précis de la trajectoire.
+
+Sur les trajectoires jamais descendues : leurs notes reposent sur leur seul énoncé. Sois-y honnête. Dans la justification d'au moins un critère, signale que tu déduis. Dans la synthèse, dis explicitement quelles trajectoires n'ont pas été testées et quelles notes restent donc fragiles. Une note présentée comme mesurée alors qu'elle ne l'est pas est pire qu'une note basse.
 - Le total est la moyenne des notes. Ne le truque pas.
 
 Retourne STRICTEMENT ce JSON :

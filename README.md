@@ -88,6 +88,30 @@ Le total est recalculé en applicatif comme moyenne pondérée. **Le moteur ne l
 
 L'export Markdown indique sur quoi on a mesuré et avec quels poids.
 
+### Ce qui a réellement été regardé
+
+Une note ne vaut que ce qui a été observé. Noter « impact » sur une trajectoire qu'on n'a jamais descendue, c'est deviner en prenant l'air de mesurer.
+
+Le niveau de preuve est lu dans le tracé lui-même :
+
+| Niveau | Condition | Fourchette |
+|---|---|---|
+| 0 · rien regardé | aucun passage | ±35 |
+| 1 · regardée | 1 à 2 passages | ±22 |
+| 2 · descendue | 3 passages ou plus | ±12 |
+| 3 · mur atteint | un mur explicite | ±6 |
+
+Conséquences :
+
+- le total est affiché **en fourchette**, pas en point — tant qu'elle est large, un écart de quelques points ne départage rien
+- une note posée sur une trajectoire jamais descendue est marquée à l'aveugle, et la justification le dit
+- un bandeau rappelle ce qui n'a pas été regardé, avec un raccourci vers la descente
+- le moteur **sait** quelles trajectoires n'ont pas été testées : il le signale dans sa synthèse au lieu de présenter ses déductions comme des mesures
+- l'arbitrage rappelle sur quoi il tranche
+- l'export porte la fourchette et l'avertissement
+
+Faire porter à l'IA le choix des critères selon l'étape aurait été trompeur : elle ne sait pas ce qui compte dans *ta* décision. Lui montrer l'état réel de ton information, ça, elle peut le faire.
+
 ### La vue Carte
 
 La carte affiche le flux du tracé comme un arbre qui grandit vers la droite : l'étincelle, les trajectoires colorées, leurs descentes, les virages. Survole une trajectoire et sa lignée s'allume tandis que le reste s'efface. Clique un nœud et le parcours s'ouvre à l'étape correspondante.
@@ -190,6 +214,7 @@ Chaque trajectoire reçoit une couleur stable, tirée de cette palette :
 - [x] **Hypothèse à tout moment** (touche `H`), avec réouverture de la décision
 - [x] Confrontation notée et justifiée
 - [x] **Critères pondérés par l'utilisateur**, ajoutables et retirables
+- [x] **Niveau de preuve** : total en fourchette, notes à l'aveugle marquées
 - [x] Arbitrage avec falsificateurs
 - [x] **Vue Carte** du flux, en arbre, avec lignées au survol
 - [x] Tracé exportable en Markdown
@@ -202,7 +227,6 @@ Chaque trajectoire reçoit une couleur stable, tirée de cette palette :
 - [ ] Export Nexus
 
 ### V2
-- [ ] Critères attachés à une étape (les faisabilité avant la confrontation, la fidélité après)
 - [ ] Nœuds multimédia (image, audio, code)
 - [ ] Export Nexus / Notilus
 - [ ] Persistance serveur (au-delà de localStorage)

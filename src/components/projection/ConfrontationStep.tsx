@@ -7,13 +7,13 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, Loader2, Scale, Target } from 'lucide-react';
+import { ArrowRight, Loader2, Scale, Target, EyeOff } from 'lucide-react';
 import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
 import { cn } from '@/lib/utils';
 import { Button, ErrorNote, Panel, Quote, ScoreBar, Section, Tag, Thinking } from './ui';
 import CriteriaEditor from './CriteriaEditor';
-import { enabledCriteria, weightedTotal } from '@/lib/trace';
+import { weightedTotal, pathEvidence, weakestEvidence, isBlind } from '@/lib/trace';
 
 export default function ConfrontationStep() {
   const trace = useImagineStore((s) => s.traces.find((t) => t.id === s.activeTraceId));
@@ -37,6 +37,8 @@ export default function ConfrontationStep() {
         total: weightedTotal(r.values, trace.criteria ?? []),
       }))
     : [];
+
+  const weakest = c ? weakestEvidence(live) : null;
 
   const handleConfront = async () => {
     const result = await confront();
@@ -168,6 +170,7 @@ export default function ConfrontationStep() {
                       {live.map((p) => {
                         const row = c.rows.find((r) => r.pathId === p.id);
                         const value = row?.values[crit.key] ?? 0;
+                        const blind = isBlind(p);
                         return (
                           <td key={p.id} className="px-4 py-3.5 align-top">
                             <button
@@ -179,27 +182,50 @@ export default function ConfrontationStep() {
                               className="w-full text-left group"
                             >
                               <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                                <span
-                                  className="text-sm tabular-nums font-medium"
-                                  style={{ color: p.color }}
-                                >
-                                  {value}
+                                <span className="flex items-baseline gap-1.5">
+                                  <span
+                                    className={cn(
+                                      'text-sm tabular-nums font-medium',
+                                      blind && 'text-imagine-text-subtle'
+                                    )}
+                                    style={{ color: blind ? undefined : p.color }}
+                                  >
+                                    {value}
+                                  </span>
+                                  {blind && (
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full border border-imagine-spark/70 shrink-0 translate-y-[-1px]"
+                                      title="Noté sans avoir descendu cette trajectoire"
+                                    />
+                                  )}
                                 </span>
                                 <span className="text-[10px] text-imagine-text-subtle opacity-0 group-hover:opacity-100 transition-opacity">
                                   pourquoi
                                 </span>
                               </div>
-                              <ScoreBar value={value} color={p.color} />
+                              <ScoreBar
+                                value={value}
+                                color={blind ? '#8B949E' : p.color}
+                                className={blind ? 'opacity-40' : undefined}
+                              />
                             </button>
 
                             {openRationale === `${p.id}:${crit.key}` && (
-                              <motion.p
+                              <motion.div
                                 initial={{ opacity: 0, y: -4 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="text-[11px] text-imagine-text-muted leading-relaxed mt-2 pl-0.5"
+                                className="mt-2 pl-0.5 space-y-1.5"
                               >
-                                {row?.rationale[crit.key] || '—'}
-                              </motion.p>
+                                <p className="text-[11px] text-imagine-text-muted leading-relaxed">
+                                  {row?.rationale[crit.key] || '—'}
+                                </p>
+                                {blind && (
+                                  <p className="text-[11px] text-imagine-spark/80 leading-relaxed">
+                                    Noté sans avoir descendu cette trajectoire. C&apos;est une
+                                    déduction, pas une mesure.
+                                  </p>
+                                )}
+                              </motion.div>
                             )}
                           </td>
                         );
@@ -210,27 +236,74 @@ export default function ConfrontationStep() {
                   <tr className="border-t border-white/10">
                     <td className="px-5 py-4 text-[10px] uppercase tracking-[0.16em] text-imagine-text-subtle">
                       Total
+                      <div className="normal-case tracking-normal text-imagine-text-subtle/70 text-[10px] mt-0.5">
+                        fourchette selon ce qui a été regardé
+                      </div>
                     </td>
                     {live.map((p) => {
                       const row = c.rows.find((r) => r.pathId === p.id);
-                      const total = previewTotals.find((t) => t.pathId === p.id)?.total ?? row?.total ?? 0;
+                      const total =
+                        previewTotals.find((t) => t.pathId === p.id)?.total ?? row?.total ?? 0;
                       const best = Math.max(
                         0,
                         ...previewTotals.map((t) => t.total),
                         ...c.rows.map((r) => r.total)
                       );
                       const isBest = total === best && total > 0;
+                      const ev = pathEvidence(p);
+                      const low = Math.max(0, total - ev.band);
+                      const high = Math.min(100, total + ev.band);
+
                       return (
-                        <td key={p.id} className="px-4 py-4">
-                          <span
-                            className={cn(
-                              'text-lg tabular-nums font-light',
-                              isBest ? 'font-medium' : 'text-imagine-text-muted'
+                        <td key={p.id} className="px-4 py-4 align-top">
+                          <div className="flex items-baseline gap-1.5">
+                            <span
+                              className={cn(
+                                'text-lg tabular-nums font-light',
+                                isBest ? 'font-medium' : 'text-imagine-text-muted'
+                              )}
+                              style={{ color: isBest ? p.color : undefined }}
+                            >
+                              {Math.round(total * 10) / 10}
+                            </span>
+                            {ev.band >= 12 && (
+                              <span
+                                className="text-[10px] tabular-nums text-imagine-text-subtle"
+                                title={`Noté sans avoir descendu : la vraie valeur est entre ${Math.round(
+                                  low
+                                )} et ${Math.round(high)}.`}
+                              >
+                                ±{ev.band}
+                              </span>
                             )}
-                            style={{ color: isBest ? p.color : undefined }}
-                          >
-                            {Math.round(total * 10) / 10}
-                          </span>
+                          </div>
+
+                          {/* Fourchette : ce que la note permet encore d'exclure */}
+                          <div className="mt-2 w-[92px]">
+                            <div className="relative h-1 rounded-full bg-white/5">
+                              <motion.div
+                                layout
+                                className="absolute inset-y-0 rounded-full"
+                                style={{
+                                  left: `${low}%`,
+                                  right: `${100 - high}%`,
+                                  background: p.color,
+                                  opacity: 0.55,
+                                }}
+                              />
+                              <div
+                                className="absolute inset-y-[-3px] w-px rounded-full"
+                                style={{
+                                  left: `${high}%`,
+                                  background: p.color,
+                                  opacity: 0.7,
+                                }}
+                              />
+                            </div>
+                            <div className="text-[10px] text-imagine-text-subtle mt-1">
+                              {ev.label}
+                            </div>
+                          </div>
                         </td>
                       );
                     })}
@@ -239,6 +312,50 @@ export default function ConfrontationStep() {
               </table>
             </div>
           </Panel>
+
+          {/* Ce qu'on n'a pas encore regardé */}
+          {weakest && weakest.level < 3 && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}
+              className={cn(
+                'flex items-start gap-3 rounded-xl border px-4 py-3.5',
+                weakest.level === 0
+                  ? 'border-imagine-spark/30 bg-imagine-spark/[0.06]'
+                  : 'border-white/5 bg-imagine-surface/50'
+              )}
+            >
+              <EyeOff
+                className={cn(
+                  'w-4 h-4 mt-0.5 shrink-0',
+                  weakest.level === 0 ? 'text-imagine-spark' : 'text-imagine-text-subtle'
+                )}
+              />
+              <div className="text-sm text-imagine-text-muted leading-relaxed">
+                {weakest.level === 0 ? (
+                  <>
+                    Au moins une trajectoire n&apos;a jamais été descendue. Ses notes sont des
+                    déductions, pas des mesures — la fourchette le dit. Descends-la avant
+                    d&apos;arbitrer, sinon tu décides sur une estimation.
+                  </>
+                ) : (
+                  <>
+                    La trajectoire la moins documentée est « {weakest.label} ». La fourchette
+                    indique ce que la note permet encore d&apos;exclure : tant qu&apos;elle est
+                    large, un écart de quelques points ne départage rien.
+                  </>
+                )}
+              </div>
+              <Button
+                variant="quiet"
+                onClick={() => setTraceStep(4)}
+                className="shrink-0"
+              >
+                Descendre
+              </Button>
+            </motion.div>
+          )}
 
           {/* Synthèse */}
           {c.synthesis && (
