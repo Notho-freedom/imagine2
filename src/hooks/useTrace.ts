@@ -1,0 +1,429 @@
+// ========================================
+// IMAGINE - useTrace Hook
+// Orchestration du moteur de décision
+// ========================================
+
+import { useCallback, useState } from 'react';
+import { useImagineStore } from '@/store';
+import { generateId } from '@/lib/utils';
+import { GROQ_MODEL } from '@/lib/groq';
+import { DEFAULT_CRITERIA, makeEvent } from '@/lib/trace';
+import type {
+  Confrontation,
+  DescentPayload,
+  IdeaReading,
+  ReadingPayload,
+  ThoughtPath,
+  ThoughtTrace,
+  Verdict,
+} from '@/types';
+
+// ========================================
+// Client
+// ========================================
+
+interface TraceResponse<T> {
+  success: boolean;
+  result?: T;
+  error?: string;
+}
+
+async function callTrace<T>(
+  action: string,
+  data: Record<string, unknown>
+): Promise<TraceResponse<T>> {
+  try {
+    const response = await fetch('/api/trace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, data }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('[useTrace] échec réseau:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Erreur de connexion',
+    };
+  }
+}
+
+type PendingAction =
+  | 'reading'
+  | 'projection'
+  | 'descent'
+  | 'confrontation'
+  | 'verdict'
+  | null;
+
+// ========================================
+// Hook
+// ========================================
+
+export function useTrace() {
+  const [pending, setPending] = useState<PendingAction>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const {
+    traces,
+    activeTraceId,
+    ui,
+    createTrace,
+    setActiveTrace,
+    deleteTrace,
+    setTraceStep,
+    setActivePath,
+    updateTrace,
+    appendEvent,
+    setReading,
+    addPaths,
+    setPathStatus,
+    addDescent,
+    removeDescent,
+    setConfrontation,
+    setVerdict,
+    commitVerdict,
+  } = useImagineStore();
+
+  const trace = traces.find((t) => t.id === activeTraceId) ?? null;
+
+  const run = useCallback(
+    async <T,>(
+      action: PendingAction,
+      fn: () => Promise<TraceResponse<T>>
+    ): Promise<T | null> => {
+      setPending(action);
+      setError(null);
+      try {
+        const res = await fn();
+        if (!res.success || res.result === undefined) {
+          setError(res.error || 'Le moteur n\'a pas répondu');
+          return null;
+        }
+        return res.result;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Erreur inattendue');
+        return null;
+      } finally {
+        setPending(null);
+      }
+    },
+    []
+  );
+
+  // ------------------------------------------------
+  // 1. Lecture
+  // ------------------------------------------------
+
+  const read = useCallback(async () => {
+    if (!trace || !trace.spark.trim()) {
+      setError('Aucune idée à lire');
+      return null;
+    }
+
+    const payload = await run<ReadingPayload>('reading', () =>
+      callTrace<ReadingPayload>('readIdea', {
+        spark: trace.spark,
+        context: trace.context,
+        horizon: trace.horizon,
+      })
+    );
+
+    if (!payload) return null;
+
+    const reading: IdeaReading = {
+      ...payload,
+      createdAt: new Date().toISOString(),
+      model: GROQ_MODEL,
+    };
+
+    setReading(trace.id, reading);
+    appendEvent(
+      makeEvent('reading', 'ai', 'Lecture établie', {
+        detail: reading.restatement,
+      })
+    );
+    setTraceStep(2);
+    return reading;
+  }, [trace, run, setReading, appendEvent, setTraceStep]);
+
+  // ------------------------------------------------
+  // 2. Projection
+  // ------------------------------------------------
+
+  const project = useCallback(
+    async (count = 4) => {
+      if (!trace) return null;
+
+      const result = await run<{ paths: any[] }>('projection', () =>
+        callTrace<{ paths: any[] }>('projectPaths', {
+          spark: trace.spark,
+          reading: trace.reading,
+          count,
+          avoid: trace.paths.map((p) => p.title),
+        })
+      );
+
+      if (!result || result.paths.length === 0) {
+        if (result) setError('Aucune trajectoire produite');
+        return null;
+      }
+
+      addPaths(trace.id, result.paths);
+      appendEvent(
+        makeEvent('projection', 'ai', `${result.paths.length} trajectoires projetées`, {
+          detail: result.paths.map((p: any) => p.title).join(' · '),
+        })
+      );
+      setTraceStep(3);
+      return result.paths;
+    },
+    [trace, run, addPaths, appendEvent, setTraceStep]
+  );
+
+  // ------------------------------------------------
+  // 3. Descente
+  // ------------------------------------------------
+
+  const descend = useCallback(
+    async (path: ThoughtPath, probe = '') => {
+      if (!trace) return null;
+
+      const entry = await run<DescentPayload>('descent', () =>
+        callTrace<DescentPayload>('deepenPath', {
+          spark: trace.spark,
+          reading: trace.reading,
+          path: {
+            title: path.title,
+            thesis: path.thesis,
+            angle: path.angle,
+            keyMoves: path.keyMoves,
+          },
+          timeline: path.timeline.map((e) => ({
+            question: e.question,
+            analysis: e.analysis,
+            wall: e.wall,
+          })),
+          probe,
+        })
+      );
+
+      if (!entry) return null;
+
+      addDescent(trace.id, path.id, {
+        ...entry,
+        model: GROQ_MODEL,
+      });
+
+      appendEvent(
+        makeEvent('descent', 'ai', `${path.title} : ${entry.question}`, {
+          detail: entry.decision,
+          pathId: path.id,
+          color: path.color,
+        })
+      );
+
+      return entry;
+    },
+    [trace, run, addDescent, appendEvent]
+  );
+
+  // ------------------------------------------------
+  // 4. Confrontation
+  // ------------------------------------------------
+
+  const confront = useCallback(async () => {
+    if (!trace) return null;
+
+    const live = trace.paths.filter((p) => p.status !== 'eliminated');
+    if (live.length < 2) {
+      setError('Il faut au moins deux trajectoires vivantes pour confronter');
+      return null;
+    }
+
+    const result = await run<Omit<Confrontation, 'createdAt' | 'model'>>(
+      'confrontation',
+      () =>
+        callTrace<Omit<Confrontation, 'createdAt' | 'model'>>('comparePaths', {
+          spark: trace.spark,
+          reading: trace.reading,
+          paths: live.map((p) => ({
+            id: p.id,
+            title: p.title,
+            thesis: p.thesis,
+            angle: p.angle,
+            payoff: p.payoff,
+            risks: p.risks,
+            timeline: p.timeline.map((e) => ({
+              question: e.question,
+              analysis: e.analysis,
+              wall: e.wall,
+            })),
+          })),
+          criteria: DEFAULT_CRITERIA,
+        })
+    );
+
+    if (!result) return null;
+
+    const confrontation: Confrontation = {
+      ...result,
+      createdAt: new Date().toISOString(),
+      model: GROQ_MODEL,
+    };
+
+    setConfrontation(trace.id, confrontation);
+    appendEvent(
+      makeEvent('confrontation', 'ai', 'Confrontation établie', {
+        detail: confrontation.discriminator,
+      })
+    );
+    setTraceStep(5);
+    return confrontation;
+  }, [trace, run, setConfrontation, appendEvent, setTraceStep]);
+
+  // ------------------------------------------------
+  // 5. Arbitrage
+  // ------------------------------------------------
+
+  const arbitrate = useCallback(async () => {
+    if (!trace) return null;
+
+    const live = trace.paths.filter((p) => p.status !== 'eliminated');
+    if (live.length === 0) {
+      setError('Aucune trajectoire vivante à arbitrer');
+      return null;
+    }
+
+    const result = await run<Omit<Verdict, 'createdAt' | 'model'>>('verdict', () =>
+      callTrace<Omit<Verdict, 'createdAt' | 'model'>>('arbitrate', {
+        spark: trace.spark,
+        reading: trace.reading,
+        paths: live.map((p) => ({
+          id: p.id,
+          title: p.title,
+          thesis: p.thesis,
+          payoff: p.payoff,
+        })),
+        confrontation: trace.confrontation,
+      })
+    );
+
+    if (!result) return null;
+
+    const verdict: Verdict = {
+      ...result,
+      createdAt: new Date().toISOString(),
+      model: GROQ_MODEL,
+    };
+
+    setVerdict(trace.id, verdict);
+    appendEvent(
+      makeEvent('verdict', 'ai', 'Arbitrage rendu', {
+        detail:
+          trace.paths.find((p) => p.id === verdict.recommendedPathId)?.title ??
+          verdict.recommendedPathId,
+        pathId: verdict.recommendedPathId,
+        color: trace.paths.find((p) => p.id === verdict.recommendedPathId)?.color,
+      })
+    );
+    setTraceStep(6);
+    return verdict;
+  }, [trace, run, setVerdict, appendEvent, setTraceStep]);
+
+  // ------------------------------------------------
+  // Décisions de l'utilisateur
+  // ------------------------------------------------
+
+  const eliminate = useCallback(
+    (path: ThoughtPath) => {
+      if (!trace) return;
+      setPathStatus(trace.id, path.id, 'eliminated');
+      appendEvent(
+        makeEvent('elimination', 'user', `« ${path.title} » écartée`, {
+          detail: path.thesis,
+          pathId: path.id,
+          color: path.color,
+        })
+      );
+    },
+    [trace, setPathStatus, appendEvent]
+  );
+
+  const restore = useCallback(
+    (path: ThoughtPath) => {
+      if (!trace) return;
+      setPathStatus(trace.id, path.id, path.timeline.length ? 'explored' : 'open');
+    },
+    [trace, setPathStatus]
+  );
+
+  const commit = useCallback(() => {
+    if (!trace || !trace.verdict) return;
+    commitVerdict(trace.id);
+    const chosen = trace.paths.find((p) => p.id === trace.verdict?.recommendedPathId);
+    appendEvent(
+      makeEvent('commitment', 'user', 'Décision validée', {
+        detail: chosen ? `${chosen.title} — ${trace.verdict.closing}` : trace.verdict.closing,
+        pathId: chosen?.id,
+        color: chosen?.color,
+      })
+    );
+    setTraceStep(7);
+  }, [trace, commitVerdict, appendEvent, setTraceStep]);
+
+  const declareSpark = useCallback(
+    (spark: string) => {
+      if (!trace) return;
+      const title =
+        spark.trim().split(/[.\n]/)[0]?.slice(0, 72).trim() || trace.title;
+      updateTrace(trace.id, { spark, title: title.length > 2 ? title : trace.title });
+      appendEvent(
+        makeEvent('statement', 'user', 'Idée posée', { detail: spark.slice(0, 400) })
+      );
+    },
+    [trace, updateTrace, appendEvent]
+  );
+
+  return {
+    trace,
+    traces,
+    activeTraceId,
+    step: ui.traceStep,
+    activePathId: ui.activePathId,
+    pending,
+    error,
+
+    setError,
+    createTrace,
+    setActiveTrace,
+    deleteTrace,
+    setStep: setTraceStep,
+    setActivePath,
+
+    declareSpark,
+    read,
+    project,
+    descend,
+    confront,
+    arbitrate,
+    eliminate,
+    restore,
+    commit,
+    removeDescent,
+  };
+}
+
+export default useTrace;
+
+// ========================================
+// Trace d'exemple - pour voir le moteur en action
+// ========================================
+
+export function seedExampleTrace(createTrace: () => string): string {
+  return createTrace();
+}
+
+export function makeUserPathId(): string {
+  return generateId();
+}

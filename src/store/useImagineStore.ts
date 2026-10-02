@@ -6,17 +6,26 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import type { 
-  ImagineNode, 
-  Edge, 
+import type {
+  ImagineNode,
+  Edge,
   EdgeRelationType,
-  Viewport, 
+  Viewport,
   Project,
   AppMode,
   AISuggestion,
   TextNode,
+  ThoughtTrace,
+  ThoughtPath,
+  IdeaReading,
+  Confrontation,
+  Verdict,
+  DescentEntry,
+  PathPayload,
+  TraceEvent,
 } from '@/types';
 import { generateId } from '@/lib/utils';
+import { nextPathColor } from '@/lib/trace';
 
 // ========================================
 // Types
@@ -40,7 +49,19 @@ interface UIState {
   showMinimap: boolean;
   commandPaletteOpen: boolean;
   sparkInputOpen: boolean;
+  view: 'projection' | 'map';
+  traceStep: number;
+  activePathId: string | null;
 }
+
+export type TraceStepKind =
+  | 'intake'
+  | 'reading'
+  | 'projection'
+  | 'descent'
+  | 'confrontation'
+  | 'verdict'
+  | 'ledger';
 
 interface ImagineState {
   // Project
@@ -58,6 +79,10 @@ interface ImagineState {
   
   // AI
   suggestions: AISuggestion[];
+
+  // Trace - moteur de décision
+  traces: ThoughtTrace[];
+  activeTraceId: string | null;
   
   // Actions - Project
   setProject: (project: Project) => void;
@@ -99,18 +124,41 @@ interface ImagineState {
   toggleMinimap: () => void;
   setCommandPaletteOpen: (open: boolean) => void;
   setSparkInputOpen: (open: boolean) => void;
+  setView: (view: UIState['view']) => void;
   
   // Actions - AI
   addSuggestion: (suggestion: AISuggestion) => void;
   acceptSuggestion: (id: string) => void;
   dismissSuggestion: (id: string) => void;
   clearSuggestions: () => void;
+
+  // Actions - Trace
+  createTrace: (seed?: { title?: string; spark?: string }) => string;
+  setActiveTrace: (id: string) => void;
+  deleteTrace: (id: string) => void;
+  setTraceStep: (step: number) => void;
+  setActivePath: (id: string | null) => void;
+  updateTrace: (id: string, updates: Partial<ThoughtTrace>) => void;
+  appendEvent: (event: TraceEvent) => void;
+  setReading: (traceId: string, reading: IdeaReading) => void;
+  addPaths: (traceId: string, payloads: PathPayload[]) => void;
+  updatePath: (traceId: string, pathId: string, updates: Partial<ThoughtPath>) => void;
+  setPathStatus: (traceId: string, pathId: string, status: ThoughtPath['status']) => void;
+  addDescent: (traceId: string, pathId: string, entry: Omit<DescentEntry, 'id' | 'pathId' | 'createdAt'>) => void;
+  removeDescent: (traceId: string, pathId: string, entryId: string) => void;
+  setConfrontation: (traceId: string, confrontation: Confrontation) => void;
+  setVerdict: (traceId: string, verdict: Verdict) => void;
+  commitVerdict: (traceId: string) => void;
   
   // Getters
   getNode: (id: string) => ImagineNode | undefined;
   getSelectedNodes: () => ImagineNode[];
   getEdgesForNode: (id: string) => Edge[];
   getConnectedNodes: (id: string) => ImagineNode[];
+
+  // Getters - Trace
+  getActiveTrace: () => ThoughtTrace | null;
+  getActivePath: () => ThoughtPath | null;
 }
 
 // ========================================
@@ -135,7 +183,12 @@ const initialUIState: UIState = {
   showMinimap: false,
   commandPaletteOpen: false,
   sparkInputOpen: false,
+  view: 'projection',
+  traceStep: 1,
+  activePathId: null,
 };
+
+const touch = () => new Date().toISOString();
 
 // ========================================
 // Store
@@ -152,6 +205,8 @@ export const useImagineStore = create<ImagineState>()(
         canvas: initialCanvasState,
         ui: initialUIState,
         suggestions: [],
+        traces: [],
+        activeTraceId: null,
 
         // ========================================
         // Project Actions
@@ -469,6 +524,12 @@ export const useImagineStore = create<ImagineState>()(
           });
         },
 
+        setView: (view) => {
+          set((state) => {
+            state.ui.view = view;
+          });
+        },
+
         // ========================================
         // AI Actions
         // ========================================
@@ -620,6 +681,249 @@ export const useImagineStore = create<ImagineState>()(
         },
 
         // ========================================
+        // Trace Actions
+        // ========================================
+
+        createTrace: (seed) => {
+          const id = generateId();
+          const now = touch();
+          const title = seed?.title?.trim() || 'Nouvelle décision';
+
+          const trace: ThoughtTrace = {
+            id,
+            title,
+            spark: seed?.spark ?? '',
+            context: '',
+            horizon: '',
+            reading: null,
+            paths: [],
+            confrontation: null,
+            verdict: null,
+            events: [
+              {
+                id: generateId(),
+                kind: 'statement',
+                actor: 'user',
+                label: 'Tracé ouvert',
+                detail: title,
+                createdAt: now,
+              },
+            ],
+            status: 'open',
+            createdAt: now,
+            updatedAt: now,
+          };
+
+          set((state) => {
+            state.traces.unshift(trace);
+            state.activeTraceId = id;
+            state.ui.view = 'projection';
+            state.ui.traceStep = 1;
+            state.ui.activePathId = null;
+          });
+
+          return id;
+        },
+
+        setActiveTrace: (id) => {
+          set((state) => {
+            state.activeTraceId = id;
+            state.ui.traceStep = 1;
+            state.ui.activePathId = null;
+          });
+        },
+
+        deleteTrace: (id) => {
+          set((state) => {
+            state.traces = state.traces.filter((t) => t.id !== id);
+            if (state.activeTraceId === id) {
+              state.activeTraceId = state.traces[0]?.id ?? null;
+              state.ui.activePathId = null;
+              state.ui.traceStep = 1;
+            }
+          });
+        },
+
+        setTraceStep: (step) => {
+          set((state) => {
+            state.ui.traceStep = step;
+          });
+        },
+
+        setActivePath: (id) => {
+          set((state) => {
+            state.ui.activePathId = id;
+          });
+        },
+
+        updateTrace: (id, updates) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === id);
+            if (!trace) return;
+            Object.assign(trace, updates);
+            trace.updatedAt = touch();
+          });
+        },
+
+        appendEvent: (event) => {
+          const state = get();
+          if (!state.activeTraceId) return;
+          set((s) => {
+            const trace = s.traces.find((t) => t.id === s.activeTraceId);
+            if (!trace) return;
+            trace.events.push(event);
+            trace.updatedAt = touch();
+          });
+        },
+
+        setReading: (traceId, reading) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            trace.reading = reading;
+            trace.updatedAt = touch();
+          });
+        },
+
+        addPaths: (traceId, payloads) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+
+            for (const p of payloads) {
+              const now = touch();
+              trace.paths.push({
+                id: generateId(),
+                traceId,
+                parentPathId: null,
+                color: nextPathColor(trace.paths),
+                title: p.title,
+                thesis: p.thesis,
+                angle: p.angle,
+                keyMoves: p.keyMoves,
+                risks: p.risks,
+                payoff: p.payoff,
+                divergence: p.divergence,
+                status: 'open',
+                depth: 0,
+                timeline: [],
+                scores: null,
+                createdAt: now,
+                updatedAt: now,
+                origin: 'ai',
+              });
+            }
+
+            trace.updatedAt = touch();
+          });
+        },
+
+        updatePath: (traceId, pathId, updates) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            const path = trace.paths.find((p) => p.id === pathId);
+            if (!path) return;
+            Object.assign(path, updates);
+            path.updatedAt = touch();
+            trace.updatedAt = touch();
+          });
+        },
+
+        setPathStatus: (traceId, pathId, status) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            const path = trace.paths.find((p) => p.id === pathId);
+            if (!path) return;
+            path.status = status;
+            path.updatedAt = touch();
+            trace.updatedAt = touch();
+          });
+        },
+
+        addDescent: (traceId, pathId, entry) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            const path = trace.paths.find((p) => p.id === pathId);
+            if (!path) return;
+
+            const full: DescentEntry = {
+              ...entry,
+              id: generateId(),
+              pathId,
+              createdAt: touch(),
+            };
+
+            path.timeline.push(full);
+            if (path.status === 'open') path.status = 'explored';
+            path.updatedAt = touch();
+            trace.updatedAt = touch();
+          });
+        },
+
+        removeDescent: (traceId, pathId, entryId) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            const path = trace.paths.find((p) => p.id === pathId);
+            if (!path) return;
+            path.timeline = path.timeline.filter((e) => e.id !== entryId);
+            if (path.timeline.length === 0) path.status = 'open';
+            path.updatedAt = touch();
+            trace.updatedAt = touch();
+          });
+        },
+
+        setConfrontation: (traceId, confrontation) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            trace.confrontation = confrontation;
+
+            // Les trajectoires les mieux notées survivent
+            const ranked = [...confrontation.rows].sort((a, b) => b.total - a.total);
+            ranked.forEach((row, i) => {
+              const path = trace.paths.find((p) => p.id === row.pathId);
+              if (!path || path.status === 'eliminated') return;
+              path.scores = {
+                values: row.values,
+                rationale: row.rationale,
+                total: row.total,
+              };
+              if (i === 0) path.status = 'retained';
+            });
+
+            trace.updatedAt = touch();
+          });
+        },
+
+        setVerdict: (traceId, verdict) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            trace.verdict = verdict;
+            trace.updatedAt = touch();
+          });
+        },
+
+        commitVerdict: (traceId) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+
+            for (const p of trace.paths) {
+              if (p.id === trace.verdict?.recommendedPathId) p.status = 'selected';
+              else if (p.status !== 'eliminated') p.status = 'eliminated';
+            }
+
+            trace.status = 'arbitrated';
+            trace.updatedAt = touch();
+          });
+        },
+
+        // ========================================
         // Getters
         // ========================================
 
@@ -645,6 +949,18 @@ export const useImagineStore = create<ImagineState>()(
           );
           return get().nodes.filter((n) => connectedIds.includes(n.id));
         },
+
+        getActiveTrace: () => {
+          const { traces, activeTraceId } = get();
+          return traces.find((t) => t.id === activeTraceId) ?? null;
+        },
+
+        getActivePath: () => {
+          const { traces, activeTraceId, ui } = get();
+          const trace = traces.find((t) => t.id === activeTraceId);
+          if (!trace) return null;
+          return trace.paths.find((p) => p.id === ui.activePathId) ?? null;
+        },
       })),
       {
         name: 'imagine-storage',
@@ -652,9 +968,12 @@ export const useImagineStore = create<ImagineState>()(
           project: state.project,
           nodes: state.nodes,
           edges: state.edges,
+          traces: state.traces,
+          activeTraceId: state.activeTraceId,
           ui: {
             showGrid: state.ui.showGrid,
             showMinimap: state.ui.showMinimap,
+            view: state.ui.view,
           },
         }),
       }

@@ -5,6 +5,15 @@
 
 import type { ImagineNode, AISuggestion } from '@/types';
 import { generateId } from '@/lib/utils';
+import {
+  callGroq,
+  safeJsonParse,
+  GROQ_MODEL,
+  type GroqMessage,
+  type GroqResponse,
+} from '@/lib/groq';
+
+export type { GroqMessage, GroqResponse };
 
 // ========================================
 // Types
@@ -62,95 +71,13 @@ export interface ForgeResponse {
   };
 }
 
-interface GroqMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
 
-interface GroqResponse {
-  id: string;
-  choices: Array<{
-    message: {
-      role: string;
-      content: string;
-    };
-    finish_reason: string;
-  }>;
-  usage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
-}
-
-// ========================================
-// JSON extraction helpers
-// ========================================
-
-function parseJsonContent(raw: string): string {
-  let content = raw.trim();
-  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced) content = fenced[1].trim();
-
-  if (!content.startsWith('{') && !content.startsWith('[')) {
-    const start = content.search(/[[{]/);
-    const end = Math.max(content.lastIndexOf('}'), content.lastIndexOf(']'));
-    if (start !== -1 && end > start) {
-      content = content.slice(start, end + 1);
-    }
-  }
-
-  return content;
-}
-
-function safeJsonParse(raw: string): any {
-  try {
-    return JSON.parse(parseJsonContent(raw));
-  } catch (error) {
-    console.error('[Groq] JSON parse error:', error, '\nRaw:', raw?.slice(0, 500));
-    return {};
-  }
-}
-
-// ========================================
+  // ========================================
 // Groq AI Service Class
 // ========================================
 
 class GroqAIService {
-  private apiEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
-  private model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
-
-  private async callGroq(
-    messages: GroqMessage[],
-    options: { temperature?: number; maxTokens?: number } = {}
-  ): Promise<GroqResponse> {
-    const apiKey = process.env.GROQ_API_KEY;
-    
-    if (!apiKey) {
-      throw new Error('GROQ_API_KEY non configurée');
-    }
-
-    const response = await fetch(this.apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 2048,
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Groq API error: ${response.status} - ${error}`);
-    }
-
-    return response.json();
-  }
+  private model = GROQ_MODEL;
 
   private simpleAnalysis(textNodes: Array<ImagineNode & { content: string }>): AIAnalysisResult {
     const allText = textNodes.map(n => n.content).join(' ');
@@ -192,7 +119,7 @@ class GroqAIService {
       .join('\n\n');
 
     try {
-      const response = await this.callGroq([
+      const response = await callGroq([
         {
           role: 'system',
           content: `Tu es un assistant d'analyse cognitive pour IMAGINE, un IDE de pensée augmentée. 
@@ -220,7 +147,7 @@ Réponds UNIQUEMENT avec du JSON valide, sans markdown.`,
           role: 'user',
           content: `Analyse ces idées:\n\n${nodesContent}`,
         },
-      ], { temperature: 0.5 });
+      ], { temperature: 0.5, maxTokens: 4096 });
 
       const content = response.choices[0]?.message?.content || '{}';
       const parsed = safeJsonParse(content);
@@ -284,7 +211,7 @@ Réponds UNIQUEMENT avec du JSON valide, sans markdown.`,
         .filter(Boolean)
         .join('\n---\n');
 
-      const response = await this.callGroq([
+      const response = await callGroq([
         {
           role: 'system',
           content: `Tu es l'assistant IA d'IMAGINE. Génère des suggestions pour enrichir une idée.
@@ -337,7 +264,7 @@ Max 3 suggestions. Réponds UNIQUEMENT en JSON valide.`,
     };
 
     try {
-      const response = await this.callGroq([
+      const response = await callGroq([
         {
           role: 'system',
           content: `Tu reformules des textes. ${styleInstructions[style]} Réponds uniquement avec le texte reformulé, sans explication.`,
@@ -412,7 +339,7 @@ Le code doit être fonctionnel et idiomatique.`,
     };
 
     try {
-      const response = await this.callGroq([
+      const response = await callGroq([
         {
           role: 'system',
           content: `Tu es l'assistant Forge d'IMAGINE. ${prompts[outputType]}
@@ -460,7 +387,7 @@ Format ta réponse en Markdown propre.`,
         .map((n, i) => `[${i}] ${(n as any).content?.slice(0, 200)}`)
         .join('\n');
 
-      const response = await this.callGroq([
+      const response = await callGroq([
         {
           role: 'system',
           content: `Compare une idée avec d'autres et trouve les plus similaires.
@@ -520,7 +447,7 @@ ${textContents || 'Aucune idée encore'}`,
         },
       ];
 
-      const response = await this.callGroq(messages, { temperature: 0.8 });
+      const response = await callGroq(messages, { temperature: 0.8 });
       return response.choices[0]?.message?.content || 'Je n\'ai pas pu générer de réponse.';
     } catch (error) {
       console.error('[Groq] Chat error:', error);
@@ -556,7 +483,7 @@ ${textContents || 'Aucune idée encore'}`,
     }
 
     try {
-      const response = await this.callGroq([
+      const response = await callGroq([
         {
           role: 'system',
           content: `Tu analyses des connexions entre idées. Suggère des labels descriptifs pour le lien.
@@ -636,7 +563,7 @@ Max 4 suggestions. JSON uniquement.`,
       .join('\n---\n');
 
     try {
-      const response = await this.callGroq([
+      const response = await callGroq([
         {
           role: 'system',
           content: `Tu analyses une idée et génères des métadonnées structurées.
@@ -712,7 +639,7 @@ Sois précis et pertinent. JSON uniquement.`,
       .join(', ');
 
     try {
-      const response = await this.callGroq([
+      const response = await callGroq([
         {
           role: 'system',
           content: `Tu analyses un réseau d'idées et suggères des connexions manquantes.
@@ -763,3 +690,4 @@ Max 5 connexions les plus pertinentes. JSON uniquement.`,
 // Export singleton instance
 export const aiService = new GroqAIService();
 export default aiService;
+

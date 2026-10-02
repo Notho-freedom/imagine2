@@ -124,6 +124,7 @@ export interface Edge {
   relationType: EdgeRelationType;
   label?: string;
   confidenceScore?: number; // 0-1 pour les liens IA
+  weight?: number; // épaisseur relative du lien
   metadata: {
     createdAt: string;
     createdBy: 'user' | 'ai';
@@ -209,7 +210,7 @@ export interface CanvasState {
 // UI State
 // ========================================
 
-export type AppMode = 'canvas' | 'drift' | 'forge';
+export type AppMode = 'canvas' | 'drift' | 'forge' | 'projection';
 
 export interface UIState {
   mode: AppMode;
@@ -289,3 +290,9 @@ export interface ExportOptions {
   includeMetadata: boolean;
   selectedOnly: boolean;
 }
+
+// ========================================
+// Trace - moteur de décision traçable
+// ========================================
+
+export * from './trace';
