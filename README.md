@@ -67,7 +67,20 @@ Le parcours tient en sept étapes :
 | Raccourci | Action |
 |-----------|--------|
 | `⌘/Ctrl + →` `←` | Étape suivante / précédente |
+| `H` | Ouvrir une hypothèse (« et si… ? ») |
 | `⌘/Ctrl + K` | Palette de commandes |
+
+### L'hypothèse
+
+Le geste n'a pas d'étape. À tout moment — étincelle, lecture, projection, descente, confrontation, arbitrage, journal — **« et si… ? »** ouvre une trajectoire depuis l'idée courante, qui s'explore comme les autres.
+
+Si une décision avait été rendue, elle est **rouverte** : elle avait été prise sur un jeu de trajectoires incomplet. L'arbitrage devra être refait. C'est tracé au journal.
+
+### La vue Carte
+
+La carte affiche le flux du tracé comme un arbre qui grandit vers la droite : l'étincelle, les trajectoires colorées, leurs descentes, les virages. Survole une trajectoire et sa lignée s'allume tandis que le reste s'efface. Clique un nœud et le parcours s'ouvre à l'étape correspondante.
+
+Le bouton **Flux / Nœuds** bascule vers l'ancien canvas de cartes.
 
 ---
 
@@ -158,13 +171,17 @@ Chaque trajectoire reçoit une couleur stable, tirée de cette palette :
 
 ### Moteur de trace ✅
 - [x] Lecture profonde de l'idée (présupposés, tensions, question décisive)
+- [x] **Lecture contestable** : édition, refus d'éléments, relecture par le moteur
 - [x] Projection en trajectoires colorées et divergentes
 - [x] Descente avec détection de mur
+- [x] Bifurcation : virer en cours de descente, avec ce qu'on perd
+- [x] **Hypothèse à tout moment** (touche `H`), avec réouverture de la décision
 - [x] Confrontation notée et justifiée
 - [x] Arbitrage avec falsificateurs
+- [x] **Vue Carte** du flux, en arbre, avec lignées au survol
 - [x] Tracé exportable en Markdown
 
-### Canvas (vue Carte)
+### Canvas (vue Nœuds)
 - [x] Canvas infini
 - [x] Nœuds texte
 - [x] Liens manuels
@@ -172,9 +189,8 @@ Chaque trajectoire reçoit une couleur stable, tirée de cette palette :
 - [ ] Export Nexus
 
 ### V2
-- [ ] Correction de la lecture par l'utilisateur (réinjectée dans le prompt)
-- [ ] Sous-trajectoires : bifurquer à l'intérieur d'une descente
 - [ ] Enrichissement des critères de confrontation par l'utilisateur
+- [ ] Critères pondérés
 - [ ] Nœuds multimédia (image, audio, code)
 - [ ] Export Nexus / Notilus
 - [ ] Persistance serveur (au-delà de localStorage)

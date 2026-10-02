@@ -7,8 +7,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Layers, Waypoints } from 'lucide-react';
+import { Layers, Waypoints, Network, Grid3x3 } from 'lucide-react';
 import { Canvas } from '@/components/canvas';
+import TraceCanvas from '@/components/canvas/TraceCanvas';
 import {
   WelcomeScreen,
   SparkInput,
@@ -27,6 +28,9 @@ export default function Home() {
 
   const view = useImagineStore((s) => s.ui.view);
   const setView = useImagineStore((s) => s.setView);
+  const mapKind = useImagineStore((s) => s.ui.mapKind);
+  const setMapKind = useImagineStore((s) => s.setMapKind);
+  const hasTrace = useImagineStore((s) => s.traces.length > 0);
   const nodes = useImagineStore((s) => s.nodes);
   const setProject = useImagineStore((s) => s.setProject);
 
@@ -109,10 +113,44 @@ export default function Home() {
                   transition={{ duration: 0.2 }}
                   className="w-full h-full"
                 >
-                  <Canvas />
-                  <Toolbar />
-                  <Sidebar />
-                  <MiniMap />
+                  {mapKind === 'trace' && hasTrace ? <TraceCanvas /> : <Canvas />}
+
+                  {mapKind !== 'trace' || !hasTrace ? (
+                    <>
+                      <Toolbar />
+                      <Sidebar />
+                      <MiniMap />
+                    </>
+                  ) : null}
+
+                  {hasTrace && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 rounded-xl glass px-1.5 py-1.5">
+                      <button
+                        onClick={() => setMapKind('trace')}
+                        className={cn(
+                          'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors',
+                          mapKind === 'trace'
+                            ? 'bg-imagine-projection/20 text-imagine-projection'
+                            : 'text-imagine-text-subtle hover:text-imagine-text hover:bg-white/5'
+                        )}
+                      >
+                        <Network className="w-3.5 h-3.5" />
+                        Flux
+                      </button>
+                      <button
+                        onClick={() => setMapKind('board')}
+                        className={cn(
+                          'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors',
+                          mapKind === 'board'
+                            ? 'bg-imagine-projection/20 text-imagine-projection'
+                            : 'text-imagine-text-subtle hover:text-imagine-text hover:bg-white/5'
+                        )}
+                      >
+                        <Grid3x3 className="w-3.5 h-3.5" />
+                        Nœuds
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

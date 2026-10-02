@@ -21,6 +21,7 @@ import DescentStep from './DescentStep';
 import ConfrontationStep from './ConfrontationStep';
 import VerdictStep from './VerdictStep';
 import LedgerStep from './LedgerStep';
+import HypothesisBar from './HypothesisBar';
 import { Button, Empty, Tag } from './ui';
 
 export default function ProjectionBoard() {
@@ -277,6 +278,8 @@ export default function ProjectionBoard() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      <HypothesisBar />
     </div>
   );
 }

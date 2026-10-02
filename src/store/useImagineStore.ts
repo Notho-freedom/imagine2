@@ -52,6 +52,7 @@ interface UIState {
   commandPaletteOpen: boolean;
   sparkInputOpen: boolean;
   view: 'projection' | 'map';
+  mapKind: 'trace' | 'board';
   traceStep: number;
   activePathId: string | null;
 }
@@ -127,6 +128,7 @@ interface ImagineState {
   setCommandPaletteOpen: (open: boolean) => void;
   setSparkInputOpen: (open: boolean) => void;
   setView: (view: UIState['view']) => void;
+  setMapKind: (kind: UIState['mapKind']) => void;
   
   // Actions - AI
   addSuggestion: (suggestion: AISuggestion) => void;
@@ -156,6 +158,7 @@ interface ImagineState {
   removeDescent: (traceId: string, pathId: string, entryId: string) => void;
   setConfrontation: (traceId: string, confrontation: Confrontation) => void;
   setVerdict: (traceId: string, verdict: Verdict) => void;
+  reopenVerdict: (traceId: string, reason: string) => void;
   commitVerdict: (traceId: string) => void;
   
   // Getters
@@ -192,6 +195,7 @@ const initialUIState: UIState = {
   commandPaletteOpen: false,
   sparkInputOpen: false,
   view: 'projection',
+  mapKind: 'trace',
   traceStep: 1,
   activePathId: null,
 };
@@ -535,6 +539,12 @@ export const useImagineStore = create<ImagineState>()(
         setView: (view) => {
           set((state) => {
             state.ui.view = view;
+          });
+        },
+
+        setMapKind: (kind: UIState['mapKind']) => {
+          set((state) => {
+            state.ui.mapKind = kind;
           });
         },
 
@@ -970,6 +980,39 @@ export const useImagineStore = create<ImagineState>()(
 
             trace.status = 'arbitrated';
             trace.updatedAt = touch();
+          });
+        },
+
+        /**
+         * Une hypothèse est arrivée après la décision : celle-ci a été prise
+         * sur un jeu de trajectoires incomplet. Elle redevient une proposition.
+         */
+        reopenVerdict: (traceId, reason) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+
+            const chosenId = trace.verdict?.recommendedPathId;
+            for (const p of trace.paths) {
+              if (p.id === chosenId) {
+                p.status = p.timeline.length ? 'explored' : 'open';
+                p.scores = null;
+              }
+            }
+
+            trace.confrontation = null;
+            trace.verdict = null;
+            trace.status = 'open';
+            trace.updatedAt = touch();
+
+            trace.events.push({
+              id: generateId(),
+              kind: 'branch',
+              actor: 'ai',
+              label: 'Décision rouverte',
+              detail: reason,
+              createdAt: touch(),
+            });
           });
         },
 

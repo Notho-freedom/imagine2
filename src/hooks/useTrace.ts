@@ -85,6 +85,7 @@ setReading,
     removeDescent,
     setConfrontation,
     setVerdict,
+    reopenVerdict,
     commitVerdict,
   } = useImagineStore();
 
@@ -551,7 +552,78 @@ setReading,
     [trace, updateTrace, appendEvent]
   );
 
-  return {
+  // ------------------------------------------------
+// 7. L'hypothèse - le geste qui n'a pas d'étape
+//
+// Peu importe où l'on est dans le parcours, « et si… ? » ouvre une
+// trajectoire depuis l'idée courante. Elle est explorable comme les
+// autres. Si une décision avait été rendue, elle est rouverte : elle
+// avait été prise sur un jeu incomplet.
+// ------------------------------------------------
+
+const hypothesize = useCallback(
+  async (statement: string) => {
+    const clean = statement.trim();
+    if (!trace || clean.length < 3) return null;
+
+    const parent = trace.paths.find((p) => p.id === ui.activePathId) ?? null;
+
+    const ids = addPaths(
+      trace.id,
+      [
+        {
+          title: clean.length > 48 ? `${clean.slice(0, 45)}…` : clean,
+          thesis: clean,
+          angle: '',
+          keyMoves: [],
+          risks: [],
+          payoff: '',
+          divergence: parent
+            ? `Hypothèse ouverte depuis « ${parent.title} ».`
+            : 'Hypothèse ouverte depuis l\'idée initiale.',
+        },
+      ],
+      parent
+        ? {
+            pathId: parent.id,
+            entryIndex: parent.timeline.length,
+            branch: {
+              id: '',
+              question: clean,
+              alternative: `${parent.title} — ${parent.thesis}`,
+              chosen: clean,
+              costOfChoice: '',
+              atEntryIndex: parent.timeline.length,
+              createdAt: new Date().toISOString(),
+            },
+          }
+        : undefined
+    );
+
+    appendEvent(
+      makeEvent('branch', 'user', `Hypothèse — ${clean}`, {
+        detail: parent ? `depuis « ${parent.title} »` : 'depuis l\'idée initiale',
+        pathId: ids[0],
+        color: trace.paths.find((p) => p.id === ids[0])?.color,
+      })
+    );
+
+    // Une décision prise sans cette hypothèse n'est plus valable.
+    if (trace.status === 'arbitrated' || trace.verdict) {
+      reopenVerdict(trace.id, `Une hypothèse est arrivée après la décision : ${clean}`);
+    }
+
+    if (ids[0]) {
+      setActivePath(ids[0]);
+      setTraceStep(4);
+    }
+
+    return ids[0] ?? null;
+  },
+  [trace, ui.activePathId, addPaths, appendEvent, reopenVerdict, setActivePath, setTraceStep]
+);
+
+return {
     trace,
     traces,
     activeTraceId,
@@ -576,6 +648,7 @@ setReading,
     project,
     descend,
     fork,
+    hypothesize,
     confront,
     arbitrate,
     eliminate,

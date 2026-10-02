@@ -4,7 +4,9 @@
 // ========================================
 
 import type {
+  BranchPoint,
   ComparisonCriterion,
+  PathStatus,
   ThoughtPath,
   ThoughtTrace,
   TraceEvent,
@@ -217,6 +219,232 @@ export const PATH_STATUS_LABEL: Record<ThoughtPath['status'], string> = {
 export function survivingPaths(paths: ThoughtPath[]): ThoughtPath[] {
   const alive = paths.filter((p) => p.status !== 'eliminated');
   return alive.length > 0 ? alive : paths;
+}
+
+// ========================================
+// Layout de l'arbre du tracé
+// Le flux est un arbre qui grandit vers la droite :
+// étincelle → trajectoires → descentes → virages
+// ========================================
+
+export const LANE_H = 148;
+export const PATH_NODE = { w: 236, h: 62 };
+export const ENTRY_NODE = { w: 186, h: 46 };
+export const SPARK_NODE = { w: 268, h: 76 };
+export const COL_GAP = 74;
+
+export interface TraceNode {
+  id: string;
+  kind: 'spark' | 'path' | 'entry';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string;
+  title: string;
+  subtitle: string;
+  pathId: string | null;
+  rootPathId: string | null;
+  depth: number;
+  lane: number;
+  status: PathStatus | null;
+  entryIndex: number | null;
+}
+
+export interface TraceEdge {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: string;
+  kind: 'branch' | 'descent' | 'fork';
+  pathId: string | null;
+  /** Raccordé à ce nœud */
+  toNodeId: string;
+  fromNodeId: string;
+  solid: boolean;
+}
+
+export interface TraceLayout {
+  nodes: TraceNode[];
+  edges: TraceEdge[];
+  width: number;
+  height: number;
+  sparkY: number;
+  /** Racine de chaque trajectoire, pour la mise en évidence de lignée */
+  lineageOf: Record<string, string>;
+}
+
+const centerY = (n: { y: number; h: number }) => n.y + n.h / 2;
+const rightOf = (n: { x: number; w: number }) => n.x + n.w;
+const leftOf = (n: { x: number }) => n.x;
+
+export function traceLayout(trace: ThoughtTrace): TraceLayout {
+  const nodes: TraceNode[] = [];
+  const edges: TraceEdge[] = [];
+  const lineageOf: Record<string, string> = {};
+
+  let lane = 0;
+  const topLanes: number[] = [];
+
+  const childrenOf = (id: string | null) =>
+    trace.paths.filter((p) => p.parentPathId === id);
+
+  const link = (from: TraceNode, to: TraceNode, kind: TraceEdge['kind'], solid: boolean) => {
+    edges.push({
+      id: `${from.id}->${to.id}`,
+      x1: rightOf(from),
+      y1: centerY(from),
+      x2: leftOf(to),
+      y2: centerY(to),
+      color: to.color,
+      kind,
+      pathId: to.pathId,
+      toNodeId: to.id,
+      fromNodeId: from.id,
+      solid,
+    });
+  };
+
+  function placePath(path: ThoughtPath, depth: number, x0: number): TraceNode {
+    const root = path.rootPathId ?? path.id;
+    lineageOf[path.id] = root;
+
+    // La voie est réservée avant toute descente : les enfants reserve une voie
+    // neuve, jamais celle de leur parent.
+    const myLane = lane;
+    lane += 1;
+
+    const y = myLane * LANE_H;
+    const node: TraceNode = {
+      id: `p:${path.id}`,
+      kind: 'path',
+      x: x0,
+      y: y + (LANE_H - PATH_NODE.h) / 2,
+      w: PATH_NODE.w,
+      h: PATH_NODE.h,
+      color: path.color,
+      title: path.title,
+      subtitle:
+        path.status === 'selected'
+          ? 'retenue'
+          : path.status === 'eliminated'
+            ? 'écartée'
+            : `${path.timeline.length} passage${path.timeline.length > 1 ? 's' : ''}`,
+      pathId: path.id,
+      rootPathId: root,
+      depth,
+      lane: myLane,
+      status: path.status,
+      entryIndex: null,
+    };
+    nodes.push(node);
+
+    // La chaîne de descente, sur la même voie
+    const entryX = x0 + PATH_NODE.w + COL_GAP;
+    let previous: TraceNode = node;
+
+    path.timeline.forEach((entry, i) => {
+      const e: TraceNode = {
+        id: `e:${entry.id}`,
+        kind: 'entry',
+        x: entryX + i * (ENTRY_NODE.w + 20),
+        y: y + (LANE_H - ENTRY_NODE.h) / 2,
+        w: ENTRY_NODE.w,
+        h: ENTRY_NODE.h,
+        color: path.color,
+        title: entry.question,
+        subtitle: entry.decision || entry.wall || '',
+        pathId: path.id,
+        rootPathId: root,
+        depth,
+        lane: myLane,
+        status: null,
+        entryIndex: i,
+      };
+      nodes.push(e);
+      link(previous, e, 'descent', i < path.branches.length);
+      previous = e;
+    });
+
+    // Les virages partent d'un passage précis
+    const children = childrenOf(path.id);
+    if (children.length) {
+      const afterEntries =
+        entryX + path.timeline.length * (ENTRY_NODE.w + 20) + (path.timeline.length ? 40 : 0);
+
+      children.forEach((child) => {
+        // La branche dont le chemin retenu correspond à cet enfant.
+        // Le chemin retenu est stocké sous forme de « titre — thèse » ; seul le
+        // début suffit à l'identifier, et c'est ce que le moteur a produit.
+        const branchIdx = path.branches.findIndex((b: BranchPoint) =>
+          b.chosen.startsWith(child.title)
+        );
+        // Un virage peut être posé au dernier passage : dans ce cas il s'ancre
+// sur ce passage, pas sur la trajectoire elle-même.
+const anchorIndex = Math.min(
+          path.branches[branchIdx].atEntryIndex,
+          Math.max(0, path.timeline.length - 1)
+        );
+        const forkEntry =
+          branchIdx >= 0
+            ? (nodes.find(
+                (n) =>
+                  n.kind === 'entry' &&
+                  n.pathId === path.id &&
+                  n.entryIndex === anchorIndex
+              ) ?? node)
+            : node;
+
+        const childNode = placePath(child, depth + 1, afterEntries);
+        link(forkEntry, childNode, 'fork', true);
+      });
+    }
+
+    return node;
+  }
+
+  // Racines
+  childrenOf(null).forEach((p) => {
+    topLanes.push(lane);
+    placePath(p, 0, SPARK_NODE.w + COL_GAP);
+  });
+
+  // L'étincelle se place entre les voies, pas sur la première.
+  const laneCenter = (l: number) => l * LANE_H + LANE_H / 2;
+  const sparkY =
+    topLanes.length > 0
+      ? (laneCenter(Math.min(...topLanes)) + laneCenter(Math.max(...topLanes))) / 2
+      : 0;
+
+  const spark: TraceNode = {
+    id: 'spark',
+    kind: 'spark',
+    x: 0,
+    y: sparkY - SPARK_NODE.h / 2,
+    w: SPARK_NODE.w,
+    h: SPARK_NODE.h,
+    color: '#E6EDF3',
+    title: trace.title,
+    subtitle: trace.spark.slice(0, 140),
+    pathId: null,
+    rootPathId: null,
+    depth: -1,
+    lane: -1,
+    status: null,
+    entryIndex: null,
+  };
+  nodes.unshift(spark);
+
+  nodes
+    .filter((n) => n.kind === 'path' && n.depth === 0)
+    .forEach((n) => link(spark, n, 'branch', true));
+
+  const width = nodes.reduce((m, n) => Math.max(m, n.x + n.w), 0) + 120;
+  const height = Math.max(...nodes.map((n) => n.y + n.h), 0) + 120;
+
+  return { nodes, edges, width, height, sparkY, lineageOf };
 }
 
 // ========================================
