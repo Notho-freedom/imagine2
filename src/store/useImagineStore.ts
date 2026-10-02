@@ -23,11 +23,18 @@ import type {
   Verdict,
 DescentEntry,
   BranchPoint,
+  ComparisonCriterion,
   PathPayload,
   TraceEvent,
 } from '@/types';
 import { generateId } from '@/lib/utils';
-import { nextPathColor } from '@/lib/trace';
+import {
+  nextPathColor,
+  DEFAULT_CRITERIA,
+  normalizeWeight,
+  criterionKey,
+  weightedTotal,
+} from '@/lib/trace';
 
 // ========================================
 // Types
@@ -143,6 +150,15 @@ interface ImagineState {
   setTraceStep: (step: number) => void;
   setActivePath: (id: string | null) => void;
   updateTrace: (id: string, updates: Partial<ThoughtTrace>) => void;
+  setCriteria: (traceId: string, criteria: ComparisonCriterion[]) => void;
+  addCriterion: (traceId: string, label: string) => void;
+  updateCriterion: (
+    traceId: string,
+    key: string,
+    updates: Partial<ComparisonCriterion>
+  ) => void;
+  removeCriterion: (traceId: string, key: string) => void;
+  resetCriteria: (traceId: string) => void;
   appendEvent: (event: TraceEvent) => void;
   setReading: (traceId: string, reading: IdeaReading) => void;
   patchReading: (traceId: string, patch: Partial<IdeaReading>) => void;
@@ -714,6 +730,7 @@ export const useImagineStore = create<ImagineState>()(
             context: '',
             horizon: '',
             reading: null,
+            criteria: DEFAULT_CRITERIA.map((c) => ({ ...c })),
             paths: [],
             confrontation: null,
             verdict: null,
@@ -790,6 +807,75 @@ export const useImagineStore = create<ImagineState>()(
             const trace = s.traces.find((t) => t.id === s.activeTraceId);
             if (!trace) return;
             trace.events.push(event);
+            trace.updatedAt = touch();
+          });
+        },
+
+        setCriteria: (traceId, criteria) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            trace.criteria = criteria.map((c) => ({
+              ...c,
+              weight: normalizeWeight(c.weight),
+            }));
+            trace.updatedAt = touch();
+          });
+        },
+
+        addCriterion: (traceId, label) => {
+          const clean = label.trim();
+          if (!clean) return;
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            if (!trace.criteria) trace.criteria = DEFAULT_CRITERIA.map((c) => ({ ...c }));
+
+            let key = criterionKey(clean);
+            if (trace.criteria.some((c) => c.key === key)) {
+              key = `${key}_${trace.criteria.length}`;
+            }
+
+            trace.criteria.push({
+              key,
+              label: clean,
+              description: '',
+              weight: 1,
+              enabled: true,
+              origin: 'user',
+            });
+            trace.updatedAt = touch();
+          });
+        },
+
+        updateCriterion: (traceId, key, updates) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            const crit = trace.criteria?.find((c) => c.key === key);
+            if (!crit) return;
+            Object.assign(crit, updates);
+            if (typeof crit.weight === 'number') {
+              crit.weight = normalizeWeight(crit.weight);
+            }
+            trace.updatedAt = touch();
+          });
+        },
+
+        removeCriterion: (traceId, key) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace?.criteria) return;
+            trace.criteria = trace.criteria.filter((c) => c.key !== key);
+            trace.updatedAt = touch();
+          });
+        },
+
+        resetCriteria: (traceId: string) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            trace.criteria = DEFAULT_CRITERIA.map((c) => ({ ...c }));
             trace.updatedAt = touch();
           });
         },
@@ -950,7 +1036,9 @@ export const useImagineStore = create<ImagineState>()(
               path.scores = {
                 values: row.values,
                 rationale: row.rationale,
-                total: row.total,
+                // Recalculé ici avec les poids du moment : si l'utilisateur
+                // les change ensuite, l'affichage suit, pas le stockage.
+                total: weightedTotal(row.values, trace.criteria ?? []),
               };
               if (i === 0) path.status = 'retained';
             });
@@ -1076,3 +1164,4 @@ export const useImagineStore = create<ImagineState>()(
 );
 
 export default useImagineStore;
+

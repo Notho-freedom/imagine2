@@ -144,10 +144,19 @@ export interface PathScores {
   total: number;
 }
 
+/**
+ * Un critère de confrontation.
+ * Le poids est une conviction de l'utilisateur, pas une vérité :
+ * 1 = normal, 2 = il compte double, 0.5 =Accessoire.
+ */
 export interface ComparisonCriterion {
   key: string;
   label: string;
   description: string;
+  /** Multiplicateur appliqué au total */
+  weight: number;
+  enabled: boolean;
+  origin: 'default' | 'user';
 }
 
 export interface PathScoreRow {
@@ -224,6 +233,8 @@ export interface ThoughtTrace {
   context: string;
   horizon: string;
   reading: IdeaReading | null;
+  /** Les critères de confrontation retenus, pondérés par l'utilisateur */
+  criteria: ComparisonCriterion[];
   paths: ThoughtPath[];
   confrontation: Confrontation | null;
   verdict: Verdict | null;

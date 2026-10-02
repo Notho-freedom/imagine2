@@ -427,7 +427,7 @@ setReading,
               wall: e.wall,
             })),
           })),
-          criteria: DEFAULT_CRITERIA,
+          criteria: trace.criteria ?? DEFAULT_CRITERIA,
         })
     );
 
@@ -435,6 +435,8 @@ setReading,
 
     const confrontation: Confrontation = {
       ...result,
+      // Les critères sont ceux qui ont servi, pas ceux par défaut.
+      criteria: trace.criteria?.length ? trace.criteria : (result.criteria ?? []),
       createdAt: new Date().toISOString(),
       model: GROQ_MODEL,
     };

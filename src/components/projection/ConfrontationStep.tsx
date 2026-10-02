@@ -12,6 +12,8 @@ import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
 import { cn } from '@/lib/utils';
 import { Button, ErrorNote, Panel, Quote, ScoreBar, Section, Tag, Thinking } from './ui';
+import CriteriaEditor from './CriteriaEditor';
+import { enabledCriteria, weightedTotal } from '@/lib/trace';
 
 export default function ConfrontationStep() {
   const trace = useImagineStore((s) => s.traces.find((t) => t.id === s.activeTraceId));
@@ -23,6 +25,18 @@ export default function ConfrontationStep() {
 
   const live = trace.paths.filter((p) => p.status !== 'eliminated');
   const c = trace.confrontation;
+
+  /**
+   * Tant que le moteur n'a pas mesuré, on affiche le total tel qu'il serait
+   * avec les poids actuels, dès qu'une première mesure existe. Changer un
+   * poids fait donc bouger le classement immédiatement, avant de re-mesurer.
+   */
+  const previewTotals = c
+    ? c.rows.map((r) => ({
+        pathId: r.pathId,
+        total: weightedTotal(r.values, trace.criteria ?? []),
+      }))
+    : [];
 
   const handleConfront = async () => {
     const result = await confront();
@@ -81,6 +95,8 @@ export default function ConfrontationStep() {
 
       {error && <ErrorNote message={error} />}
 
+      <CriteriaEditor />
+
       {pending === 'confrontation' && !c && (
         <Thinking
           label="Confrontation en cours"
@@ -111,8 +127,14 @@ export default function ConfrontationStep() {
                     </th>
                     {live.map((p) => {
                       const row = c.rows.find((r) => r.pathId === p.id);
-                      const best = row ? Math.max(...c.rows.map((x) => x.total)) : 0;
-                      const isBest = row ? row.total === best : false;
+                      const preview = previewTotals.find((t) => t.pathId === p.id)?.total;
+                      const total = preview ?? row?.total ?? 0;
+                      const best = Math.max(
+                        0,
+                        ...previewTotals.map((t) => t.total),
+                        ...c.rows.map((r) => r.total)
+                      );
+                      const isBest = total === best;
                       return (
                         <th key={p.id} className="px-4 py-3.5 text-left">
                           <div className="flex items-center gap-2">
@@ -191,9 +213,13 @@ export default function ConfrontationStep() {
                     </td>
                     {live.map((p) => {
                       const row = c.rows.find((r) => r.pathId === p.id);
-                      const isBest = row
-                        ? row.total === Math.max(...c.rows.map((x) => x.total))
-                        : false;
+                      const total = previewTotals.find((t) => t.pathId === p.id)?.total ?? row?.total ?? 0;
+                      const best = Math.max(
+                        0,
+                        ...previewTotals.map((t) => t.total),
+                        ...c.rows.map((r) => r.total)
+                      );
+                      const isBest = total === best && total > 0;
                       return (
                         <td key={p.id} className="px-4 py-4">
                           <span
@@ -203,7 +229,7 @@ export default function ConfrontationStep() {
                             )}
                             style={{ color: isBest ? p.color : undefined }}
                           >
-                            {row?.total ?? 0}
+                            {Math.round(total * 10) / 10}
                           </span>
                         </td>
                       );

@@ -21,9 +21,14 @@ import {
   asString,
   asStringList,
   normalizeScore,
-  average,
   GROQ_MODEL,
 } from '@/lib/groq';
+import {
+  enabledCriteria,
+  criterionDirection,
+  normalizeWeight,
+  weightedTotal,
+} from '@/lib/trace';
 
 // ========================================
 // 1. Lecture - comprendre avant de répondre
@@ -405,6 +410,7 @@ async function comparePaths(input: {
   criteria: ComparisonCriterion[];
 }): Promise<ConfrontationPayload> {
   const live = input.paths;
+  const active = enabledCriteria(input.criteria);
   if (live.length === 0) {
     return { criteria: input.criteria, rows: [], synthesis: '', discriminator: '' };
   }
@@ -425,8 +431,16 @@ async function comparePaths(input: {
     )
     .join('\n\n');
 
-  const criteriaBlock = input.criteria
-    .map((c) => `- ${c.key} : ${c.label} — ${c.description} (0 = très faible, 100 = très fort)`)
+  const criteriaBlock = active
+    .map((c) => {
+      const dir = criterionDirection(c);
+      const sens = dir === 'lower' ? "moins vaut mieux — 100 = faible" : 'plus vaut mieux';
+      return `- ${c.key} : ${c.label} (${sens}) — ${c.description}`;
+    })
+    .join('\n');
+
+  const weightsBlock = active
+    .map((c) => `- ${c.key} : poids ${normalizeWeight(c.weight)}`)
     .join('\n');
 
   const response = await callGroq(
@@ -462,7 +476,11 @@ Retourne STRICTEMENT ce JSON :
   "discriminator": "LA question unique dont la réponse changerait le classement. Une question, précise et vérifiable. Si rien ne peut départager, écris ce qu'il faudrait savoir."
 }
 
-Réutilise exactement les clés de critères fournies. L'index de chaque row correspond à l'ordre des trajectoires données (0 pour la première). Écris en français.
+Réutilise exactement les clés de critères fournies, y compris celles ajoutées par l'utilisateur. L'index de chaque row correspond à l'ordre des trajectoires données (0 pour la première).
+
+Le champ "total" est IGNORÉ : il est recalculé en applicatif comme moyenne pondérée par les poids ci-dessous. Écris 0, ne le calcule pas toi-même, ne commente pas les poids.
+
+Ces poids traduisent les priorités de l'utilisateur. Ils ne changent pas les notes par critère — ils ne changent que le classement final. Quand deux trajectoires sont proches, dis-le explicitement dans la synthèse, et signale si le poids a joué un rôle dans le classement.
 
 N'invente jamais de chiffre, de statistique, de citation, de nom d'étude ni de source. Si une donnée chiffrée est nécessaire pour trancher et que tu ne la connais pas, écris « [à vérifier] » et explique pourquoi elle serait décisive.`,
       },
@@ -472,7 +490,7 @@ N'invente jamais de chiffre, de statistique, de citation, de nom d'étude ni de 
           input.reading
             ? `Intention : ${input.reading.intent}\nEnjeu : ${input.reading.stakes}\n`
             : ''
-        }Critères :\n${criteriaBlock}\n\n${numbered}`,
+        }Critères :\n${criteriaBlock}\n\nPoids déclarés par l'utilisateur :\n${weightsBlock}\n\n${numbered}`,
       },
     ],
     { temperature: 0.35, maxTokens: 2600, json: true }
@@ -480,16 +498,13 @@ N'invente jamais de chiffre, de statistique, de citation, de nom d'étude ni de 
 
   const parsed = safeJsonParse(response.choices[0]?.message?.content || '{}');
 
-  const criteria: ComparisonCriterion[] =
-    Array.isArray(parsed.criteria) && parsed.criteria.length
-      ? parsed.criteria
-          .filter((c: any) => typeof c?.key === 'string')
-          .map((c: any) => ({
-            key: c.key,
-            label: asString(c.label, c.key),
-            description: asString(c.description),
-          }))
-      : input.criteria;
+  // On conserve les critères de l'utilisateur, libellés et poids compris :
+  // la confrontation doit rester auditable telle qu'elle a été décidée.
+  const criteria: ComparisonCriterion[] = active.map((c) => ({
+    ...c,
+    weight: normalizeWeight(c.weight),
+    enabled: true,
+  }));
 
   const keys = criteria.map((c) => c.key);
 
@@ -509,7 +524,9 @@ N'invente jamais de chiffre, de statistique, de citation, de nom d'étude ni de 
         pathId: live[index].id,
         values,
         rationale,
-        total: typeof r.total === 'number' ? r.total : average(values),
+        // Toujours recalculé ici : un total produit par le modèle
+        // décrédibiliserait toute la confrontation.
+        total: weightedTotal(values, criteria),
       };
     })
     .filter((r): r is PathScoreRow => r !== null && r !== undefined);

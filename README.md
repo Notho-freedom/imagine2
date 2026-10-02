@@ -76,6 +76,18 @@ Le geste n'a pas d'étape. À tout moment — étincelle, lecture, projection, d
 
 Si une décision avait été rendue, elle est **rouverte** : elle avait été prise sur un jeu de trajectoires incomplet. L'arbitrage devra être refait. C'est tracé au journal.
 
+### Les critères
+
+Les cinq critères par défaut (faisabilité, impact, coût, risque, fidélité) sont une convention, pas une vérité. **« Ce qui compte »** permet de :
+
+- **peser** chaque critère — ×0,2 à ×3 — et voir le classement bouger immédiatement, sans attendre une nouvelle mesure
+- **retirer** ou **réactiver** un critère
+- **ajouter** les siens (réversibilité, image de marque, dépendance à une personne…)
+
+Le total est recalculé en applicatif comme moyenne pondérée. **Le moteur ne le calcule jamais** — un total inventé par un modèle décrédibiliterait toute la confrontation. Le moteur sait en revanche que les poids comptent, et le signale dans sa synthèse quand ils pèsent dans le classement.
+
+L'export Markdown indique sur quoi on a mesuré et avec quels poids.
+
 ### La vue Carte
 
 La carte affiche le flux du tracé comme un arbre qui grandit vers la droite : l'étincelle, les trajectoires colorées, leurs descentes, les virages. Survole une trajectoire et sa lignée s'allume tandis que le reste s'efface. Clique un nœud et le parcours s'ouvre à l'étape correspondante.
@@ -177,6 +189,7 @@ Chaque trajectoire reçoit une couleur stable, tirée de cette palette :
 - [x] Bifurcation : virer en cours de descente, avec ce qu'on perd
 - [x] **Hypothèse à tout moment** (touche `H`), avec réouverture de la décision
 - [x] Confrontation notée et justifiée
+- [x] **Critères pondérés par l'utilisateur**, ajoutables et retirables
 - [x] Arbitrage avec falsificateurs
 - [x] **Vue Carte** du flux, en arbre, avec lignées au survol
 - [x] Tracé exportable en Markdown
@@ -189,8 +202,7 @@ Chaque trajectoire reçoit une couleur stable, tirée de cette palette :
 - [ ] Export Nexus
 
 ### V2
-- [ ] Enrichissement des critères de confrontation par l'utilisateur
-- [ ] Critères pondérés
+- [ ] Critères attachés à une étape (les faisabilité avant la confrontation, la fidélité après)
 - [ ] Nœuds multimédia (image, audio, code)
 - [ ] Export Nexus / Notilus
 - [ ] Persistance serveur (au-delà de localStorage)

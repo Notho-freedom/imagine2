@@ -50,26 +50,41 @@ export const DEFAULT_CRITERIA: ComparisonCriterion[] = [
     key: 'feasibility',
     label: 'Faisabilité',
     description: 'Ce qui peut réellement être fait, avec les moyens disponibles.',
+    weight: 1,
+    enabled: true,
+    origin: 'default',
   },
   {
     key: 'impact',
     label: 'Impact',
     description: "Ce que ça change si ça réussit, à l'échelle visée.",
+    weight: 1,
+    enabled: true,
+    origin: 'default',
   },
   {
     key: 'cost',
     label: 'Coût',
     description: "Le prix à payer : temps, énergie, argent, attention.",
+    weight: 1,
+    enabled: true,
+    origin: 'default',
   },
   {
     key: 'risk',
     label: 'Risque',
     description: "Ce qui peut mal tourner, et la prison de la décision.",
+    weight: 1,
+    enabled: true,
+    origin: 'default',
   },
   {
     key: 'coherence',
     label: 'Fidélité',
     description: "La fidélité à l'intention réelle exprimée au départ.",
+    weight: 1,
+    enabled: true,
+    origin: 'default',
   },
 ];
 
@@ -81,10 +96,66 @@ export const CRITERION_DIRECTION: Record<string, 'higher' | 'lower'> = {
   coherence: 'higher',
 };
 
-export function normalizeScore(criterionKey: string, value: unknown): number {
+export function criterionDirection(criterion: ComparisonCriterion): 'higher' | 'lower' {
+  return CRITERION_DIRECTION[criterion.key] ?? 'higher';
+}
+
+/** Poids bornés : en dessous de 0.2 le critère ne compte presque plus. */
+export const WEIGHT_MIN = 0.2;
+export const WEIGHT_MAX = 3;
+export const WEIGHT_STEP = 0.2;
+
+export function normalizeWeight(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(WEIGHT_MIN, Math.min(WEIGHT_MAX, Math.round(n * 10) / 10));
+}
+
+export function enabledCriteria(criteria: ComparisonCriterion[]): ComparisonCriterion[] {
+  const active = criteria.filter((c) => c.enabled);
+  return active.length > 0 ? active : DEFAULT_CRITERIA.filter((c) => c.enabled);
+}
+
+/**
+ * Total pondéré, calculé ici et jamais par le modèle.
+ * Un total inventé par l'IA décrédibiliserait toute la confrontation.
+ */
+export function weightedTotal(
+  values: Record<string, number>,
+  criteria: ComparisonCriterion[]
+): number {
+  const active = enabledCriteria(criteria);
+  let sum = 0;
+  let weightSum = 0;
+
+  for (const c of active) {
+    const v = values[c.key];
+    if (typeof v !== 'number' || Number.isNaN(v)) continue;
+    const w = normalizeWeight(c.weight);
+    sum += v * w;
+    weightSum += w;
+  }
+
+  if (weightSum === 0) return 0;
+  return Math.round((sum / weightSum) * 10) / 10;
+}
+
+export function normalizeScore(_key: string, value: unknown): number {
   const n = typeof value === 'number' ? value : Number(value);
   if (Number.isNaN(n)) return 50;
   return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+/** Génère une clé stable à partir d'un libellé saisi par l'utilisateur. */
+export function criterionKey(label: string): string {
+  const base = label
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 28);
+  return base || `critere_${Date.now().toString(36)}`;
 }
 
 // ========================================
@@ -625,6 +696,21 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
     const c = trace.confrontation;
     lines.push('## 5. Confrontation');
     lines.push('');
+
+    const usedCriteria = enabledCriteria(c.criteria ?? trace.criteria ?? []);
+    const weighted = usedCriteria.some((crit) => normalizeWeight(crit.weight) !== 1);
+
+    if (weighted || usedCriteria.some((crit) => crit.origin === 'user')) {
+      lines.push('**Sur quoi on a mesuré**');
+      lines.push('');
+      usedCriteria.forEach((crit) => {
+        const w = normalizeWeight(crit.weight);
+        const sens = criterionDirection(crit) === 'lower' ? ', moins vaut mieux' : '';
+        lines.push(`- **${crit.label}**${w === 1 ? '' : ` — poids ×${String(w).replace('.', ',')}`}${sens}`);
+      });
+      lines.push('');
+    }
+
     const live = trace.paths.filter((p) => p.status !== 'eliminated');
     lines.push(`| Critère | ${live.map((p) => p.title).join(' | ')} |`);
     lines.push(`|---|${live.map(() => '---').join('|')}|`);
@@ -633,11 +719,13 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
         const row = c.rows.find((r) => r.pathId === p.id);
         return row ? String(row.values[crit.key] ?? '—') : '—';
       });
-      lines.push(`| ${crit.label} | ${cells.join(' | ')} |`);
+      const w = normalizeWeight(crit.weight);
+      const suffix = w === 1 ? '' : ` (×${String(w).replace('.', ',')})`;
+      lines.push(`| ${crit.label}${suffix} | ${cells.join(' | ')} |`);
     });
-    lines.push(`| **Total** | ${live.map((p) => {
+    lines.push(`| **Total pondéré** | ${live.map((p) => {
       const row = c.rows.find((r) => r.pathId === p.id);
-      return row ? String(row.total) : '—';
+      return row ? String(weightedTotal(row.values, c.criteria)) : '—';
     }).join(' | ')} |`);
     lines.push('');
     lines.push(`**Synthèse.** ${c.synthesis}`);
