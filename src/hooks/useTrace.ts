@@ -75,7 +75,9 @@ export function useTrace() {
     setActivePath,
     updateTrace,
     appendEvent,
-    setReading,
+setReading,
+    patchReading,
+    setReadingFeedback,
     addPaths,
     setPathStatus,
     addDescent,
@@ -115,37 +117,115 @@ export function useTrace() {
   // 1. Lecture
   // ------------------------------------------------
 
-  const read = useCallback(async () => {
-    if (!trace || !trace.spark.trim()) {
-      setError('Aucune idée à lire');
-      return null;
-    }
+  const read = useCallback(
+    async (options?: { refine?: boolean }) => {
+      if (!trace || !trace.spark.trim()) {
+        setError('Aucune idée à lire');
+        return null;
+      }
 
-    const payload = await run<ReadingPayload>('reading', () =>
-      callTrace<ReadingPayload>('readIdea', {
-        spark: trace.spark,
-        context: trace.context,
-        horizon: trace.horizon,
-      })
-    );
+      const refine = options?.refine ?? false;
+      const current = trace.reading;
+      const feedback = current?.feedback;
 
-    if (!payload) return null;
+      const payload = await run<ReadingPayload>('reading', () =>
+        callTrace<ReadingPayload>('readIdea', {
+          spark: trace.spark,
+          context: trace.context,
+          horizon: trace.horizon,
+          draft: refine && current ? current : undefined,
+          rejected: refine ? feedback?.rejected ?? [] : [],
+          added: refine ? feedback?.added ?? [] : [],
+          note: refine ? feedback?.note ?? '' : '',
+        })
+      );
 
-    const reading: IdeaReading = {
-      ...payload,
-      createdAt: new Date().toISOString(),
-      model: GROQ_MODEL,
-    };
+      if (!payload) return null;
 
-    setReading(trace.id, reading);
-    appendEvent(
-      makeEvent('reading', 'ai', 'Lecture établie', {
-        detail: reading.restatement,
-      })
-    );
-    setTraceStep(2);
-    return reading;
-  }, [trace, run, setReading, appendEvent, setTraceStep]);
+      const reading: IdeaReading = {
+        ...payload,
+        createdAt: current?.createdAt ?? new Date().toISOString(),
+        model: GROQ_MODEL,
+        revision: refine ? (current?.revision ?? 0) + 1 : 0,
+        feedback: refine ? (feedback ?? null) : null,
+      };
+
+      setReading(trace.id, reading);
+      appendEvent(
+        makeEvent(refine ? 'correction' : 'reading', 'ai', refine ? 'Lecture relue' : 'Lecture établie', {
+          detail: reading.restatement,
+        })
+      );
+      setTraceStep(2);
+      return reading;
+    },
+    [trace, run, setReading, appendEvent, setTraceStep]
+  );
+
+  // ------------------------------------------------
+  // Contestation - l'utilisateur reprend la main
+  // ------------------------------------------------
+
+  const editReading = useCallback(
+    (patch: Partial<IdeaReading>, what: string) => {
+      if (!trace) return;
+      patchReading(trace.id, patch);
+      appendEvent(
+        makeEvent('correction', 'user', `Lecture corrigée — ${what}`, {
+          detail: Object.values(patch)
+            .map((v) => (Array.isArray(v) ? v.join(' ; ') : String(v ?? '')))
+            .join(' · ')
+            .slice(0, 300),
+        })
+      );
+    },
+    [trace, patchReading, appendEvent]
+  );
+
+  const rejectItem = useCallback(
+    (field: 'implicits' | 'tensions' | 'constraints' | 'unknowns', item: string) => {
+      if (!trace?.reading) return;
+      const list = trace.reading[field] ?? [];
+      patchReading(trace.id, { [field]: list.filter((i) => i !== item) } as Partial<IdeaReading>);
+      setReadingFeedback(trace.id, {
+        rejected: [...(trace.reading.feedback?.rejected ?? []), item],
+        added: trace.reading.feedback?.added ?? [],
+        note: trace.reading.feedback?.note ?? '',
+        updatedAt: new Date().toISOString(),
+      });
+      appendEvent(makeEvent('correction', 'user', 'Élément écarté de la lecture', { detail: item }));
+    },
+    [trace, patchReading, setReadingFeedback, appendEvent]
+  );
+
+  const addItem = useCallback(
+    (field: 'implicits' | 'tensions' | 'constraints' | 'unknowns', item: string) => {
+      if (!trace?.reading || !item.trim()) return;
+      const list = trace.reading[field] ?? [];
+      patchReading(trace.id, { [field]: [...list, item.trim()] } as Partial<IdeaReading>);
+      setReadingFeedback(trace.id, {
+        rejected: trace.reading.feedback?.rejected ?? [],
+        added: [...(trace.reading.feedback?.added ?? []), item.trim()],
+        note: trace.reading.feedback?.note ?? '',
+        updatedAt: new Date().toISOString(),
+      });
+      appendEvent(makeEvent('correction', 'user', 'Élément ajouté à la lecture', { detail: item.trim() }));
+    },
+    [trace, patchReading, setReadingFeedback, appendEvent]
+  );
+
+  const setNote = useCallback(
+    (note: string) => {
+      if (!trace?.reading) return;
+      setReadingFeedback(trace.id, {
+        rejected: trace.reading.feedback?.rejected ?? [],
+        added: trace.reading.feedback?.added ?? [],
+        note,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    [trace, setReadingFeedback]
+  );
 
   // ------------------------------------------------
   // 2. Projection
@@ -403,6 +483,10 @@ export function useTrace() {
 
     declareSpark,
     read,
+    editReading,
+    rejectItem,
+    addItem,
+    setNote,
     project,
     descend,
     confront,

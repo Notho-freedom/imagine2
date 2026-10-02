@@ -46,6 +46,10 @@ export async function POST(request: NextRequest) {
           spark,
           context: data?.context || '',
           horizon: data?.horizon || '',
+          draft: data?.draft || undefined,
+          rejected: Array.isArray(data?.rejected) ? data.rejected : [],
+          added: Array.isArray(data?.added) ? data.added : [],
+          note: data?.note || '',
         });
         return NextResponse.json({ success: true, result: reading });
       }

@@ -10,6 +10,7 @@ import type {
   DescentPayload,
   PathPayload,
   PathScoreRow,
+  ReadRequest,
   ReadingPayload,
   VerdictPayload,
 } from '@/types';
@@ -27,11 +28,52 @@ import {
 // 1. Lecture - comprendre avant de répondre
 // ========================================
 
-async function readIdea(input: {
-  spark: string;
-  context?: string;
-  horizon?: string;
-}): Promise<ReadingPayload> {
+async function readIdea(input: ReadRequest): Promise<ReadingPayload> {
+  const corrections: string[] = [];
+
+  if (input.draft) {
+    corrections.push(
+      [
+        'Lecture déjà produite, que l\'utilisateur a corrigée. C\'est ton point de départ.',
+        `Reformulation actuelle : ${input.draft.restatement}`,
+        `Sujet actuel : ${input.draft.subject}`,
+        `Intention actuelle : ${input.draft.intent}`,
+        input.draft.implicits.length ? `Présupposés actuels : ${input.draft.implicits.join(' ; ')}` : '',
+        input.draft.tensions.length ? `Tensions actuelles : ${input.draft.tensions.join(' ; ')}` : '',
+        input.draft.constraints.length ? `Contraintes actuelles : ${input.draft.constraints.join(' ; ')}` : '',
+        input.draft.unknowns.length ? `Inconnues actuelles : ${input.draft.unknowns.join(' ; ')}` : '',
+        input.draft.stakes ? `Enjeu actuel : ${input.draft.stakes}` : '',
+        `Question décisive actuelle : ${input.draft.decisiveQuestion}`,
+      ]
+        .filter(Boolean)
+        .join('\n')
+    );
+  }
+
+  if (input.rejected?.length) {
+    corrections.push(
+      `Éléments rejetés par l'utilisateur — ne les réutilise pas, ne les reformule pas, ne les rebuilds pas autrement :\n${input.rejected
+        .map((r) => `- ${r}`)
+        .join('\n')}`
+    );
+  }
+
+  if (input.added?.length) {
+    corrections.push(
+      `Éléments que l'utilisateur ajoute et qui font autorité :\n${input.added
+        .map((a) => `- ${a}`)
+        .join('\n')}`
+    );
+  }
+
+  if (input.note?.trim()) {
+    corrections.push(`Précision de l'utilisateur, elle fait autorité :\n${input.note.trim()}`);
+  }
+
+  const correctionBlock = corrections.length
+    ? `\n\n--- CORRECTIONS DE L'UTILISATEUR ---\n${corrections.join('\n\n')}\n\nRègles sur ces corrections :\n- Elles priment sur ton jugement. Si tu les contredis, c'est toi qui as tort.\n- Conserve ce qui était juste. N'efface pas ce qui n'a pas été contesté.\n- Si une correction te paraît absurde, respecte-la quand même : c'est sa décision, pas la tienne.`
+    : '';
+
   const material = [
     `Idée :\n${input.spark}`,
     input.context ? `Contexte :\n${input.context}` : '',
@@ -65,7 +107,7 @@ Retourne STRICTEMENT ce JSON, sans texte autour, sans markdown :
 
 N'invente jamais de chiffre, de statistique, de citation, de nom d'étude ni de source. Si une donnée chiffrée est nécessaire pour trancher et que tu ne la connais pas, écris « [à vérifier] » et explique pourquoi elle serait décisive. Une décision fondée sur des chiffres inventés est pire que pas de décision.`,
       },
-      { role: 'user', content: material },
+      { role: 'user', content: material + correctionBlock },
     ],
     { temperature: 0.4, maxTokens: 1600, json: true }
   );

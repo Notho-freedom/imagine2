@@ -27,18 +27,42 @@ export interface TraceStepMeta {
 // Lecture profonde de l'idée
 // ========================================
 
+export type ReadingField =
+  | 'restatement'
+  | 'subject'
+  | 'intent'
+  | 'implicits'
+  | 'tensions'
+  | 'constraints'
+  | 'unknowns'
+  | 'stakes'
+  | 'decisiveQuestion';
+
+export interface ReadingFeedback {
+  /** Éléments que l'utilisateur a refusés, mot pour mot */
+  rejected: string[];
+  /** Ce que l'utilisateur veut ajouter que l'IA n'a pas vu */
+  added: string[];
+  /** Précision libre, réinjectée comme faisant autorité */
+  note: string;
+  updatedAt: string;
+}
+
 export interface IdeaReading {
   restatement: string;
   subject: string;
   intent: string;
   implicits: string[];
   tensions: string[];
-  unknowns: string[];
   constraints: string[];
+  unknowns: string[];
   stakes: string;
   decisiveQuestion: string;
   createdAt: string;
   model: string;
+  /** Nombre de passes de correction */
+  revision: number;
+  feedback: ReadingFeedback | null;
 }
 
 // ========================================
@@ -195,10 +219,21 @@ export interface ReadingPayload {
   intent: string;
   implicits: string[];
   tensions: string[];
-  unknowns: string[];
   constraints: string[];
+  unknowns: string[];
   stakes: string;
   decisiveQuestion: string;
+}
+
+export interface ReadRequest {
+  spark: string;
+  context?: string;
+  horizon?: string;
+  /** Lecture précédente, si l'utilisateur corrige. Sert de brouillon à affiner. */
+  draft?: ReadingPayload;
+  rejected?: string[];
+  added?: string[];
+  note?: string;
 }
 
 export interface PathPayload {

@@ -18,6 +18,7 @@ import type {
   ThoughtTrace,
   ThoughtPath,
   IdeaReading,
+  ReadingFeedback,
   Confrontation,
   Verdict,
   DescentEntry,
@@ -141,6 +142,8 @@ interface ImagineState {
   updateTrace: (id: string, updates: Partial<ThoughtTrace>) => void;
   appendEvent: (event: TraceEvent) => void;
   setReading: (traceId: string, reading: IdeaReading) => void;
+  patchReading: (traceId: string, patch: Partial<IdeaReading>) => void;
+  setReadingFeedback: (traceId: string, feedback: ReadingFeedback) => void;
   addPaths: (traceId: string, payloads: PathPayload[]) => void;
   updatePath: (traceId: string, pathId: string, updates: Partial<ThoughtPath>) => void;
   setPathStatus: (traceId: string, pathId: string, status: ThoughtPath['status']) => void;
@@ -781,6 +784,25 @@ export const useImagineStore = create<ImagineState>()(
             const trace = state.traces.find((t) => t.id === traceId);
             if (!trace) return;
             trace.reading = reading;
+            trace.updatedAt = touch();
+          });
+        },
+
+        patchReading: (traceId, patch) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace?.reading) return;
+            Object.assign(trace.reading, patch);
+            trace.reading.revision = (trace.reading.revision ?? 0) + 1;
+            trace.updatedAt = touch();
+          });
+        },
+
+        setReadingFeedback: (traceId, feedback) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace?.reading) return;
+            trace.reading.feedback = feedback;
             trace.updatedAt = touch();
           });
         },

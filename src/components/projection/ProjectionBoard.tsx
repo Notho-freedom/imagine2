@@ -72,7 +72,7 @@ export default function ProjectionBoard() {
             pending={pending}
             error={error}
             onProject={() => project(4)}
-            onRetryRead={read}
+            onRead={() => read()}
           />
         );
       case 'projection':
