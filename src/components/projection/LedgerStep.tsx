@@ -9,16 +9,25 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Check,
+  CircleCheck,
   Copy,
   Download,
+  EyeOff,
   FileText,
+  Pencil,
   Sparkles,
   User,
 } from 'lucide-react';
 import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
 import { cn } from '@/lib/utils';
-import { downloadTrace, traceToMarkdown } from '@/lib/trace';
+import {
+  downloadTrace,
+  traceToMarkdown,
+  deliberationOf,
+  formatDuration,
+  EVENT_LABEL,
+} from '@/lib/trace';
 import { Button, Panel, Quote, Section, Stagger } from './ui';
 import type { TraceEventKind } from '@/types';
 
@@ -53,6 +62,7 @@ export default function LedgerStep() {
   if (!trace) return null;
 
   const chosen = trace.paths.find((p) => p.id === trace.verdict?.recommendedPathId);
+  const d = deliberationOf(trace);
 
   const handleCopy = async () => {
     try {
@@ -95,6 +105,138 @@ export default function LedgerStep() {
             </Button>
           </div>
         </div>
+      </Stagger>
+
+      {/* Ce qui a été éprouvé */}
+      <Stagger delay={0.05}>
+        <Panel className="p-5 space-y-5">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-imagine-text-subtle">
+                Ce que la réflexion a coûté
+              </div>
+              <div className="text-2xl font-light text-imagine-text mt-1">
+                {formatDuration(d.totalMs)}
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-right">
+              <div>
+                <div className="text-lg tabular-nums font-light text-imagine-text">
+                  {d.descentes}
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-imagine-text-subtle">
+                  descentes
+                </div>
+              </div>
+              <div>
+                <div className="text-lg tabular-nums font-light text-imagine-text">
+                  {d.hypotheses}
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-imagine-text-subtle">
+                  hypothèses
+                </div>
+              </div>
+              <div>
+                <div className="text-lg tabular-nums font-light text-imagine-text">
+                  {d.bifurcations}
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-imagine-text-subtle">
+                  virages
+                </div>
+              </div>
+              {d.checks > 0 && (
+                <div>
+                  <div
+                    className={cn(
+                      'text-lg tabular-nums font-light',
+                      d.refuted > 0 ? 'text-imagine-forge' : 'text-imagine-mature'
+                    )}
+                  >
+                    {d.refuted > 0 ? `${d.refuted} / ` : ''}
+                    {d.verified}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-imagine-text-subtle">
+                    faux vérifiés
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Répartition */}
+          {d.stages.length > 1 && (
+            <div className="space-y-1.5">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-imagine-text-subtle">
+                Où le temps est parti
+              </div>
+              <div className="flex h-1.5 rounded-full overflow-hidden bg-white/5">
+                {d.stages.map((s, i) => {
+                  const total = d.totalMs || 1;
+                  return (
+                    <div
+                      key={i}
+                      className="h-full"
+                      style={{
+                        width: `${Math.max(1, (s.ms / total) * 100)}%`,
+                        background: EVENT_COLOR[s.kind],
+                        opacity: 0.7,
+                      }}
+                      title={`${s.label} — ${formatDuration(s.ms)}`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
+                {d.stages
+                  .filter((s) => s.ms > 0)
+                  .map((s, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1.5 text-[10px] text-imagine-text-subtle"
+                    >
+                      <span
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{ background: EVENT_COLOR[s.kind] }}
+                      />
+                      {EVENT_LABEL[s.kind]}
+                      <span className="tabular-nums opacity-70">
+                        {formatDuration(s.ms)}
+                      </span>
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Ce qui n'a jamais été éprouvé */}
+          {d.untested.length > 0 ? (
+            <div className="flex items-start gap-2.5 pt-3 border-t border-white/5">
+              <EyeOff className="w-4 h-4 mt-0.5 shrink-0 text-imagine-spark" />
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-imagine-text-subtle">
+                  Jamais éprouvé
+                </div>
+                <ul className="mt-1.5 space-y-1">
+                  {d.untested.map((u) => (
+                    <li key={u} className="text-xs text-imagine-text-muted leading-relaxed">
+                      {u}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            trace.status === 'arbitrated' && (
+              <div className="flex items-start gap-2.5 pt-3 border-t border-white/5">
+                <CircleCheck className="w-4 h-4 mt-0.5 shrink-0 text-imagine-mature" />
+                <p className="text-xs text-imagine-text-muted leading-relaxed">
+                  Tout a été éprouvé : les trajectoires descendues, des hypothèses posées, des
+                  virages tentés, les faux vérifiés.
+                </p>
+              </div>
+            )
+          )}
+        </Panel>
       </Stagger>
 
       {/* Résumé */}

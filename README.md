@@ -112,6 +112,24 @@ Conséquences :
 
 Faire porter à l'IA le choix des critères selon l'étape aurait été trompeur : elle ne sait pas ce qui compte dans *ta* décision. Lui montrer l'état réel de ton information, ça, elle peut le faire.
 
+### Ce qui a été éprouvé, et ce qui ne l'a pas été
+
+L'arbitrage écrit des **falsificateurs** — ce qui prouverait que la décision est fausse. Dans la plupart des outils, ils disparaissent aussitôt écrits.
+
+Ici chacun est suivi :
+
+- **jamais regardé** / **vérifié** / **réfuté** / **sans objet**, avec une note
+- un faux **réfuté annule l'arbitrage** et rouvre la décision. C'est le système qui travaille, pas l'utilisateur
+- un nouvel arbitrage **conserve** les vérifications déjà faites — on ne recommence pas une recherche faite
+- les observations sont **réinjectées** au moteur comme faisant autorité
+- **Valider est bloqué** tant qu'un faux n'a pas été regardé : une décision qu'on n'a pas tenté d'infirmer reste un pari
+
+Le journal mesure ce que la réflexion a réellement coûté, sans rien stocker de plus — l'ordre et les horodatages des événements suffisent :
+
+- durée totale, et répartition du temps par étape
+- nombre de descentes, d'hypothèses, de virages
+- **« Jamais éprouvé »** : la liste de ce qui n'a pas été fait. Une décision validée sans descente ni hypothèse le dit haut et fort
+
 ### La vue Carte
 
 La carte affiche le flux du tracé comme un arbre qui grandit vers la droite : l'étincelle, les trajectoires colorées, leurs descentes, les virages. Survole une trajectoire et sa lignée s'allume tandis que le reste s'efface. Clique un nœud et le parcours s'ouvre à l'étape correspondante.
@@ -215,6 +233,8 @@ Chaque trajectoire reçoit une couleur stable, tirée de cette palette :
 - [x] Confrontation notée et justifiée
 - [x] **Critères pondérés par l'utilisateur**, ajoutables et retirables
 - [x] **Niveau de preuve** : total en fourchette, notes à l'aveugle marquées
+- [x] **Falsificateurs suivis** : un faux prouvé annule l'arbitrage
+- [x] **Coût de la réflexion** : temps réel et liste de ce qui n'a jamais été éprouvé
 - [x] Arbitrage avec falsificateurs
 - [x] **Vue Carte** du flux, en arbre, avec lignées au survol
 - [x] Tracé exportable en Markdown

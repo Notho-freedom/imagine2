@@ -179,6 +179,23 @@ export interface Confrontation {
 // Arbitrage
 // ========================================
 
+/**
+ * Ce qu'on a fait du falsificateur.
+ * Un decision rimaine un Pari tant que personne n'a regarde.
+ */
+export type FalsifierStatus =
+  | 'pending'   // pas encore regardé
+  | 'verified'  // on a vérifié : la décision tient
+  | 'refuted'   // on a vérifié : elle est fausse — la rouvrir
+  | 'dropped';  // sans objet,公司在 des conditions impossibles
+
+export interface FalsifierCheck {
+  falsifier: string;
+  status: FalsifierStatus;
+  note: string;
+  checkedAt: string | null;
+}
+
 export interface Verdict {
   recommendedPathId: string;
   confidence: number;
@@ -191,6 +208,8 @@ export interface Verdict {
   closing: string;
   createdAt: string;
   model: string;
+  /** Ce qu'on a fait des falsificateurs */
+  checks: FalsifierCheck[];
 }
 
 // ========================================
@@ -218,6 +237,28 @@ export interface TraceEvent {
   pathId?: string;
   color?: string;
   createdAt: string;
+}
+
+/**
+ * Ce que la réflexion a réellement coûté, lu dans le journal.
+ * Une décision prise en quatre minutes sans aucune descente ni aucune
+ * hypothèse n'est pas une décision : c'est un souhait. Le tracé peut le
+ * dire, et il doit le dire.
+ */
+export interface TraceDeliberation {
+  totalMs: number;
+  stages: Array<{ kind: TraceEventKind; label: string; ms: number }>;
+  hypotheses: number;
+  descentes: number;
+  bifurcations: number;
+  checks: number;
+  verified: number;
+  refuted: number;
+  pending: number;
+  /** Plus longue période sans rien ajouter au raisonnement */
+  longestSilenceMs: number;
+  /** Ce qui n'a jamais été éprouvé — pas un verdict, un constat */
+  untested: string[];
 }
 
 // ========================================

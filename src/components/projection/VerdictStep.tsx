@@ -5,22 +5,153 @@
 // Ce qu'on retient — et ce qui prouverait qu'on a tort
 // ========================================
 
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
+  Check,
+  Circle,
   CircleCheck,
+  CircleMinus,
+  CircleX,
   EyeOff,
   Flag,
   Loader2,
+  Pencil,
   RotateCcw,
   Scale,
   TriangleAlert,
 } from 'lucide-react';
 import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
+import { cn } from '@/lib/utils';
 import { Bullets, Button, ErrorNote, Panel, Quote, Section, Tag, Thinking } from './ui';
-import { CRITERION_DIRECTION, weakestEvidence, isBlind } from '@/lib/trace';
+import {
+  CRITERION_DIRECTION,
+  weakestEvidence,
+  isBlind,
+} from '@/lib/trace';
+import type { FalsifierCheck, FalsifierStatus } from '@/types';
+
+// ========================================
+// Un faux : ce qu'on en a fait
+// ========================================
+
+const FALSIFIER_STATE: Record<
+  FalsifierStatus,
+  { label: string; color: string; icon: React.ElementType }
+> = {
+  pending: { label: 'jamais regardé', color: '#8B949E', icon: Circle },
+  verified: { label: 'vérifié — la décision tient', color: '#34D399', icon: CircleCheck },
+  refuted: { label: 'réfuté — la décision est fausse', color: '#F87171', icon: CircleX },
+  dropped: { label: 'sans objet', color: '#FFB347', icon: CircleMinus },
+};
+
+function FalsifierRow({ check }: { check: FalsifierCheck }) {
+  const trace = useImagineStore((s) => s.traces.find((t) => t.id === s.activeTraceId));
+  const setStatus = useImagineStore((s) => s.setFalsifierStatus);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [note, setNote] = useState(check.note);
+
+  if (!trace) return null;
+
+  const state = FALSIFIER_STATE[check.status];
+  const Icon = state.icon;
+
+  const cycle: FalsifierStatus[] = ['pending', 'verified', 'refuted', 'dropped'];
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-start gap-2.5 group">
+        <span className="shrink-0 mt-0.5">
+          <Icon className="w-4 h-4" style={{ color: state.color }} />
+        </span>
+
+        <div className="flex-1 min-w-0">
+          <p
+            className={cn(
+              'text-sm leading-relaxed',
+              check.status === 'pending' ? 'text-imagine-text-muted' : 'text-imagine-text'
+            )}
+          >
+            {check.falsifier}
+          </p>
+          {check.note && (
+            <p className="text-xs text-imagine-text-subtle mt-0.5 italic">{check.note}</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          {cycle.map((s) => {
+            const st = FALSIFIER_STATE[s];
+            const active = check.status === s;
+            return (
+              <button
+                key={s}
+                title={st.label}
+                onClick={() => setStatus(trace.id, check.falsifier, s, note)}
+                className={cn(
+                  'w-5 h-5 rounded-md flex items-center justify-center transition-all',
+                  active
+                    ? 'ring-1'
+                    : 'opacity-40 hover:opacity-100'
+                )}
+                style={
+                  active
+                    ? { color: st.color, boxShadow: `inset 0 0 0 1px ${st.color}` }
+                    : { color: st.color }
+                }
+              >
+                <st.icon className="w-3 h-3" />
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setNoteOpen((v) => !v)}
+            title="Ajouter une note"
+            className="w-5 h-5 rounded-md flex items-center justify-center text-imagine-text-subtle hover:text-imagine-text transition-colors"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {check.status !== 'pending' && !noteOpen && (
+        <div className="pl-6.5 text-[10px] uppercase tracking-[0.14em]" style={{ color: state.color }}>
+          {state.label}
+          {check.checkedAt && ` · ${new Date(check.checkedAt).toLocaleDateString('fr-FR')}`}
+        </div>
+      )}
+
+      {noteOpen && (
+        <div className="pl-6.5 flex gap-2">
+          <input
+            autoFocus
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setStatus(trace.id, check.falsifier, check.status, note);
+                setNoteOpen(false);
+              }
+            }}
+            placeholder="Ce que tu as constaté"
+            className="flex-1 bg-imagine-bg/60 border border-white/10 rounded-md px-2.5 py-1.5 text-xs text-imagine-text outline-none focus:border-imagine-forge/50"
+          />
+          <button
+            onClick={() => {
+              setStatus(trace.id, check.falsifier, check.status, note);
+              setNoteOpen(false);
+            }}
+            className="px-2 py-1.5 rounded-md text-xs bg-white/5 text-imagine-text-muted hover:text-imagine-text transition-colors"
+          >
+            <Check className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function VerdictStep() {
   const trace = useImagineStore((s) => s.traces.find((t) => t.id === s.activeTraceId));
@@ -61,6 +192,9 @@ export default function VerdictStep() {
   const chosen = trace.paths.find((p) => p.id === v.recommendedPathId);
   const live = trace.paths.filter((p) => p.status !== 'eliminated');
   const color = chosen?.color ?? '#34D399';
+  const checks = v.checks ?? [];
+  const pendingCount = checks.filter((c) => c.status === 'pending').length;
+  const refutedCount = checks.filter((c) => c.status === 'refuted').length;
   const committed = trace.status === 'arbitrated';
   const loser = trace.paths.find((p) => p.id !== v.recommendedPathId);
 
@@ -123,8 +257,8 @@ export default function VerdictStep() {
         </Panel>
       </div>
 
-      {/* Falsificateurs */}
-      <Panel className="p-5 space-y-3">
+      {/* Falsificateurs : le seul endroit où une décision peut être cassée */}
+      <Panel className="p-5 space-y-4">
         <Section
           title="Ce qui prouverait qu'on a tort"
           hint="la décision reste réversible tant que ça n'est pas arrivé"
@@ -132,6 +266,32 @@ export default function VerdictStep() {
         >
           <Bullets items={v.falsifiers} color="#F87171" />
         </Section>
+
+        {checks.length > 0 && (
+          <div className="space-y-2 pt-3 border-t border-white/5">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-imagine-text-subtle">
+              Où on en est
+            </div>
+
+            {checks.map((c) => (
+              <FalsifierRow key={c.falsifier} check={c} />
+            ))}
+
+            {refutedCount > 0 && (
+              <p className="text-xs text-imagine-forge leading-relaxed pt-1">
+                {refutedCount} faux prouve{refutedCount > 1 ? 's' : ''} : l&apos;arbitrage a
+                été annulé et la décision rouverte. C&apos;est le système qui fonctionne.
+              </p>
+            )}
+
+            {pendingCount > 0 && (
+              <p className="text-xs text-imagine-text-subtle leading-relaxed pt-1">
+                {pendingCount} encore en attente. Une décision qu&apos;on n&apos;a pas tentée
+                d&apos;infirmer reste un pari.
+              </p>
+            )}
+          </div>
+        )}
       </Panel>
 
       {/* Prochaines actions */}
@@ -228,7 +388,17 @@ export default function VerdictStep() {
         <div className="flex flex-wrap items-center gap-3">
           {!committed ? (
             <>
-              <Button variant="primary" color={color} onClick={commit}>
+              <Button
+                variant="primary"
+                color={color}
+                onClick={commit}
+                disabled={pendingCount > 0}
+                title={
+                  pendingCount > 0
+                    ? `${pendingCount} faux jamais regardé — une décision non testée reste un pari`
+                    : undefined
+                }
+              >
                 <CircleCheck className="w-4 h-4" />
                 Valider cette décision
               </Button>
@@ -252,6 +422,14 @@ export default function VerdictStep() {
             </Button>
           )}
         </div>
+
+        {!committed && pendingCount > 0 && (
+          <p className="text-xs text-imagine-text-subtle leading-relaxed">
+            La validation attend que tu aies au moins jeté un œil aux faux. Si l&apos;un
+            d&apos;eux te fait changer d&apos;avis, marque-le : l&apos;arbitrage s&apos;annule
+            et la décision se rouvre.
+          </p>
+        )}
       </Panel>
 
       {/* Rappel des critères */}
@@ -276,3 +454,4 @@ export default function VerdictStep() {
     </div>
   );
 }
+

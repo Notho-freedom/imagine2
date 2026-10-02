@@ -464,8 +464,8 @@ setReading,
       return null;
     }
 
-    const result = await run<Omit<Verdict, 'createdAt' | 'model'>>('verdict', () =>
-      callTrace<Omit<Verdict, 'createdAt' | 'model'>>('arbitrate', {
+    const result = await run<Omit<Verdict, 'createdAt' | 'model' | 'checks'>>('verdict', () =>
+      callTrace<Omit<Verdict, 'createdAt' | 'model' | 'checks'>>('arbitrate', {
         spark: trace.spark,
         reading: trace.reading,
         paths: live.map((p) => ({
@@ -475,6 +475,11 @@ setReading,
           payoff: p.payoff,
         })),
         confrontation: trace.confrontation,
+        // Ce qu'on a déjà établi sur les faux précédents vaut plus qu'un
+        // arbitrage neuf : on ne recommence pas une recherche déjà faite.
+        previousChecks: (trace.verdict?.checks ?? [])
+          .filter((c) => c.status !== 'pending')
+          .map((c) => ({ falsifier: c.falsifier, status: c.status, note: c.note })),
       })
     );
 
@@ -484,6 +489,10 @@ setReading,
       ...result,
       createdAt: new Date().toISOString(),
       model: GROQ_MODEL,
+      // Le store fusionne avec les vérifications déjà faites.
+      checks: (trace.verdict?.checks ?? []).filter((c) =>
+        result.falsifiers.includes(c.falsifier)
+      ),
     };
 
     setVerdict(trace.id, verdict);

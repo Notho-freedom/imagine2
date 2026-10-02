@@ -561,6 +561,7 @@ async function arbitrate(input: {
   reading: ReadingPayload | null;
   paths: Array<{ id: string; title: string; thesis: string; payoff: string }>;
   confrontation: ConfrontationPayload | null;
+  previousChecks?: Array<{ falsifier: string; status: string; note?: string }>;
 }): Promise<VerdictPayload> {
   if (input.paths.length === 0) {
     throw new Error('Aucune trajectoire à arbitrer');
@@ -581,6 +582,21 @@ async function arbitrate(input: {
         })
         .join('\n')
     : '';
+
+  const settled = (input.previousChecks ?? [])
+    .filter((c) => c.status !== 'pending')
+    .map((c) => {
+      const label =
+        c.status === 'verified'
+          ? 'a été vérifié — la décision tient'
+          : c.status === 'refuted'
+            ? 'a été réfuté — la décision était fausse'
+            : c.status === 'dropped'
+              ? 'est sans objet'
+              : c.status;
+      return `- « ${c.falsifier} » : ${label}${c.note ? ` (${c.note})` : ''}`;
+    })
+    .join('\n');
 
   const response = await callGroq(
     [
@@ -603,7 +619,14 @@ Retourne STRICTEMENT ce JSON :
   "closing": "Une seule phrase. Le bilan net de la décision. Elle doit pouvoir servir de conclusion du tracé."
 }
 
-"index" désigne la trajectoire retenue, par sa position (0 pour la première). "confidence" entre 0 et 1. Écris en français.
+"index" désigne la trajectoire retenue, par sa position (0 pour la première). "confidence" entre 0 et 1. Écris en français.${
+          settled.length > 0
+            ? `
+
+Des observations ont déjà été faites sur des arbitrages précédents. Elles font autorité — ne redis pas le contraire de ce qui a été constaté :
+${settled}`
+            : ''
+        }
 
 N'invente jamais de chiffre, de statistique, de citation, de nom d'étude ni de source. Si une donnée chiffrée est nécessaire pour trancher et que tu ne la connais pas, écris « [à vérifier] » et explique pourquoi elle serait décisive.`,
       },

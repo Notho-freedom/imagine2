@@ -9,6 +9,7 @@ import type {
   PathStatus,
   ThoughtPath,
   ThoughtTrace,
+  TraceDeliberation,
   TraceEvent,
   TraceEventKind,
   TraceStepMeta,
@@ -355,6 +356,86 @@ export function weakestEvidence(paths: ThoughtPath[]): PathEvidence | null {
 /** Un critère noté sur une trajectoire qu'on n'a pas regardée est une devinette. */
 export function isBlind(path: ThoughtPath): boolean {
   return evidenceLevel(path) === 0;
+}
+
+// ========================================
+// Ce que la réflexion a coûté
+//
+// Rien de nouveau à stocker : le journal contient déjà l'ordre et
+// l'horodatage. On en tire le temps réel, et on regarde ce qui n'a
+// jamais été éprouvé.
+// ========================================
+
+export function deliberationOf(trace: ThoughtTrace): TraceDeliberation {
+  const events = [...trace.events].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+
+  const stages: TraceDeliberation['stages'] = [];
+  let longestSilence = 0;
+  let previous: number | null = null;
+
+  for (const e of events) {
+    const at = new Date(e.createdAt).getTime();
+    const gap = previous === null ? 0 : at - previous;
+    if (gap > longestSilence) longestSilence = gap;
+
+    const last = stages[stages.length - 1];
+    if (last && last.kind === e.kind) {
+      last.ms += gap;
+    } else {
+      stages.push({ kind: e.kind, label: e.label, ms: gap });
+    }
+    previous = at;
+  }
+
+  const checks = trace.verdict?.checks ?? [];
+  const lastEvent = previous ?? new Date(trace.createdAt).getTime();
+  const totalMs = Math.max(0, Date.now() - new Date(trace.createdAt).getTime());
+
+  const hypotheses = events.filter((e) => e.kind === 'branch' && e.actor === 'user').length;
+  const descentes = trace.paths.reduce((n, p) => n + p.timeline.length, 0);
+  const bifurcations = trace.paths.reduce((n, p) => n + p.branches.length, 0);
+
+  const untested: string[] = [];
+  if (descentes === 0) untested.push('aucune trajectoire n’a été descendue');
+  if (hypotheses === 0) untested.push('aucune hypothèse n’a été posée');
+  if (trace.verdict && trace.verdict.checks.length > 0) {
+    const pending = trace.verdict.checks.filter((c) => c.status === 'pending');
+    if (pending.length > 0) {
+      untested.push(
+        `${pending.length} falsificateur${pending.length > 1 ? 's' : ''} jamais vérifié${pending.length > 1 ? 's' : ''}`
+      );
+    }
+  }
+  if (trace.verdict && trace.verdict.checks.length === 0) {
+    untested.push('aucun falsificateur n’a été regardé');
+  }
+
+  return {
+    totalMs,
+    stages,
+    hypotheses,
+    descentes,
+    bifurcations,
+    checks: checks.length,
+    verified: checks.filter((c) => c.status === 'verified').length,
+    refuted: checks.filter((c) => c.status === 'refuted').length,
+    pending: checks.filter((c) => c.status === 'pending').length,
+    longestSilenceMs: Math.max(0, Math.max(longestSilence, Date.now() - lastEvent)),
+    untested,
+  };
+}
+
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  const min = Math.round(ms / 60000);
+  if (min < 1) return 'moins d\u2019une minute';
+  if (min < 60) return `${min} min`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours} h${min % 60 ? ` ${min % 60} min` : ''}`;
+  const days = Math.floor(hours / 24);
+  return `${days} j${hours % 24 ? ` ${hours % 24} h` : ''}`;
 }
 
 // ========================================
@@ -833,6 +914,34 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
     lines.push('');
     lines.push(bullets(v.falsifiers));
     lines.push('');
+
+    const checks = v.checks ?? [];
+    if (checks.length > 0) {
+      lines.push('**Où on en est**');
+      lines.push('');
+      const label: Record<string, string> = {
+        pending: 'jamais regardé',
+        verified: 'vérifié — la décision tient',
+        refuted: 'réfuté — la décision était fausse',
+        dropped: 'sans objet',
+      };
+      checks.forEach((c) => {
+        lines.push(
+          `- ${c.falsifier} — **${label[c.status] ?? c.status}**${
+            c.note ? ` — ${c.note}` : ''
+          }`
+        );
+      });
+      lines.push('');
+      const pending = checks.filter((c) => c.status === 'pending').length;
+      if (pending > 0) {
+        lines.push(
+          `> ${pending} faux jamais regardé : tant qu'ils ne le sont pas, cette décision reste un pari.`
+        );
+        lines.push('');
+      }
+    }
+    lines.push('');
     lines.push('**Premiers gestes**');
     lines.push('');
     lines.push(bullets(v.nextActions));
@@ -849,6 +958,19 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
 
   lines.push('## 7. Journal');
   lines.push('');
+
+  const d = deliberationOf(trace);
+  lines.push(
+    `*Réflexion étalée sur ${formatDuration(d.totalMs)} — ${d.descentes} descente${d.descentes > 1 ? 's' : ''}, ${d.hypotheses} hypothèse${d.hypotheses > 1 ? 's' : ''}, ${d.bifurcations} virage${d.bifurcations > 1 ? 's' : ''}.*`
+  );
+  lines.push('');
+
+  if (d.untested.length > 0) {
+    lines.push('> **Jamais éprouvé :**');
+    d.untested.forEach((u) => lines.push(`> - ${u}`));
+    lines.push('');
+  }
+
   trace.events.forEach((e, i) => {
     const who = e.actor === 'user' ? 'Utilisateur' : 'IA';
     const path = e.pathId ? trace.paths.find((p) => p.id === e.pathId)?.title : null;

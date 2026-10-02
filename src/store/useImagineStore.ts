@@ -21,6 +21,7 @@ import type {
   ReadingFeedback,
   Confrontation,
   Verdict,
+  FalsifierStatus,
 DescentEntry,
   BranchPoint,
   ComparisonCriterion,
@@ -174,6 +175,12 @@ interface ImagineState {
   removeDescent: (traceId: string, pathId: string, entryId: string) => void;
   setConfrontation: (traceId: string, confrontation: Confrontation) => void;
   setVerdict: (traceId: string, verdict: Verdict) => void;
+  setFalsifierStatus: (
+    traceId: string,
+    falsifier: string,
+    status: FalsifierStatus,
+    note?: string
+  ) => void;
   reopenVerdict: (traceId: string, reason: string) => void;
   commitVerdict: (traceId: string) => void;
   
@@ -1051,7 +1058,69 @@ export const useImagineStore = create<ImagineState>()(
           set((state) => {
             const trace = state.traces.find((t) => t.id === traceId);
             if (!trace) return;
-            trace.verdict = verdict;
+            // Les vérifications déjà faites survivent à un nouvel arbitrage :
+            // un falsificateur confirmé n'a pas besoin d'être revalidé.
+            const previous = new Map(
+              (trace.verdict?.checks ?? []).map((c) => [c.falsifier, c])
+            );
+
+            trace.verdict = {
+              ...verdict,
+              checks: verdict.falsifiers.map((f) => {
+                const kept = previous.get(f);
+                if (kept) return { ...kept, falsifier: f };
+                return {
+                  falsifier: f,
+                  status: 'pending' as FalsifierStatus,
+                  note: '',
+                  checkedAt: null,
+                };
+              }),
+            };
+            trace.updatedAt = touch();
+          });
+        },
+
+        setFalsifierStatus: (traceId, falsifier, status, note) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            const verdict = trace?.verdict;
+            if (!trace || !verdict) return;
+
+            const check = verdict.checks.find((c) => c.falsifier === falsifier);
+            if (!check) return;
+
+            const wasRefuted = check.status === 'refuted';
+            check.status = status;
+            if (note !== undefined) check.note = note;
+            check.checkedAt = status === 'pending' ? null : new Date().toISOString();
+
+            trace.events.push({
+              id: generateId(),
+              kind: status === 'refuted' ? 'branch' : 'correction',
+              actor: 'user',
+              label:
+                status === 'verified'
+                  ? 'Falsificateur vérifié — la décision tient'
+                  : status === 'refuted'
+                    ? 'Falsificateur réfuté'
+                    : status === 'dropped'
+                      ? 'Falsificateur écarté'
+                      : 'Falsificateur remis en attente',
+              detail: falsifier,
+              color: status === 'refuted' ? '#F87171' : '#34D399',
+              createdAt: new Date().toISOString(),
+            });
+
+            // Un faux prouvé annule la décision : on rouvre plutôt que
+            // de laisser un arbitrage invalide afficher « validée ».
+            if (wasRefuted !== (status === 'refuted')) {
+              if (status === 'refuted') {
+                trace.confrontation = null;
+                trace.verdict = null;
+                trace.status = 'open';
+              }
+            }
             trace.updatedAt = touch();
           });
         },

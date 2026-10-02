@@ -178,6 +178,9 @@ export async function POST(request: NextRequest) {
             payoff: p.payoff || '',
           })),
           confrontation: data?.confrontation || null,
+          previousChecks: Array.isArray(data?.previousChecks)
+            ? data.previousChecks
+            : [],
         });
         return NextResponse.json({ success: true, result: verdict });
       }
