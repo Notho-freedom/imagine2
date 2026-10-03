@@ -204,10 +204,12 @@ function Branch({
   branch,
   color,
   onFork,
+  onDelete,
 }: {
   branch: BranchPoint;
   color: string;
   onFork: () => void;
+  onDelete: () => void;
 }) {
   return (
     <motion.div
@@ -224,6 +226,13 @@ function Branch({
           </div>
           <p className="text-sm text-imagine-text mt-1 leading-relaxed">{branch.question}</p>
         </div>
+        <button
+          onClick={onDelete}
+          title="Oublier ce virage"
+          className="shrink-0 p-1 rounded text-imagine-text-subtle/60 hover:text-imagine-forge transition-colors"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2 text-xs">
@@ -265,6 +274,7 @@ export default function DescentStep() {
   const setActivePath = useImagineStore((s) => s.setActivePath);
   const setTraceStep = useImagineStore((s) => s.setTraceStep);
   const removeDescent = useImagineStore((s) => s.removeDescent);
+  const deleteBranch = useImagineStore((s) => s.deleteBranch);
   const { descend, fork, pending, error } = useTrace();
 
   const [probe, setProbe] = useState('');
@@ -445,6 +455,7 @@ export default function DescentStep() {
                             branch={b}
                             color={path.color}
                             onFork={() => handleFork(b.atEntryIndex, b.alternative)}
+                            onDelete={() => deleteBranch(trace.id, path.id, b.id)}
                           />
                         ))}
                       </div>

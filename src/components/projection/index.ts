@@ -6,3 +6,7 @@ export { default as DescentStep } from './DescentStep';
 export { default as ConfrontationStep } from './ConfrontationStep';
 export { default as VerdictStep } from './VerdictStep';
 export { default as LedgerStep } from './LedgerStep';
+export { default as TracePalette } from './TracePalette';
+export { default as HypothesisBar } from './HypothesisBar';
+export { default as CriteriaEditor } from './CriteriaEditor';
+export { StepMark, ImagineMark, SparkGlyph, ProofGlyph } from './marks';

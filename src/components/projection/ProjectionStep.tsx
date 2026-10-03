@@ -10,8 +10,10 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Loader2, Plus, RefreshCw, Target, TriangleAlert } from 'lucide-react';
 import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
+import { makeEvent } from '@/lib/trace';
 import { cn } from '@/lib/utils';
 import { Bullets, Button, ErrorNote, Panel, Section, Tag, Thinking } from './ui';
+import { EditableText } from './Editable';
 import type { ThoughtPath } from '@/types';
 
 function PathCard({
@@ -20,14 +22,24 @@ function PathCard({
   onExplore,
   onEliminate,
   onRestore,
+  onRename,
 }: {
   path: ThoughtPath;
   index: number;
   onExplore: () => void;
   onEliminate: () => void;
   onRestore: () => void;
+  onRename: (updates: Partial<ThoughtPath>, what: string) => void;
 }) {
   const eliminated = path.status === 'eliminated';
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(path.title);
+
+  const commit = () => {
+    setRenaming(false);
+    const v = draft.trim();
+    if (v && v !== path.title) onRename({ title: v }, 'titre');
+  };
 
   return (
     <motion.div
@@ -43,24 +55,49 @@ function PathCard({
         boxShadow: eliminated ? undefined : `0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 ${path.color}14`,
       }}
     >
-      {/* Bande de couleur : l'identité de la trajectoire */}
       <div className="h-1 w-full" style={{ background: path.color }} />
 
       <div className="p-5 space-y-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1.5 min-w-0">
+          <div className="space-y-1.5 min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span
-                className="text-[10px] font-semibold tabular-nums opacity-70"
+                className="text-[10px] font-semibold tabular-nums opacity-70 shrink-0"
                 style={{ color: path.color }}
               >
                 {String(index + 1).padStart(2, '0')}
               </span>
-              <h3 className="text-base font-semibold text-imagine-text leading-tight">
-                {path.title}
-              </h3>
+
+              {renaming ? (
+                <input
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={commit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commit();
+                    if (e.key === 'Escape') {
+                      setDraft(path.title);
+                      setRenaming(false);
+                    }
+                  }}
+                  className="flex-1 bg-imagine-bg/60 border rounded-md px-2 py-1 text-base font-semibold text-imagine-text outline-none focus:border-imagine-projection/50"
+                />
+              ) : (
+                <button
+                  onClick={() => {
+                    setDraft(path.title);
+                    setRenaming(true);
+                  }}
+                  title="Renommer"
+                  className="text-left text-base font-semibold text-imagine-text leading-tight hover:text-white transition-colors truncate"
+                >
+                  {path.title}
+                </button>
+              )}
             </div>
           </div>
+
           <Tag color={path.color}>
             {path.status === 'eliminated'
               ? 'écartée'
@@ -70,21 +107,30 @@ function PathCard({
           </Tag>
         </div>
 
-        <p
-          className="text-sm leading-relaxed border-l-2 pl-3"
-          style={{ borderColor: `${path.color}55`, color: '#E6EDF3' }}
+        <div
+          className="border-l-2 pl-3"
+          style={{ borderColor: `${path.color}55` }}
         >
-          {path.thesis}
-        </p>
+          <EditableText
+            value={path.thesis}
+            onSave={(v) => onRename({ thesis: v }, 'hypothèse')}
+            color={path.color}
+            label="Reprendre l'hypothèse"
+          />
+        </div>
 
-        {path.angle && (
-          <div className="space-y-1">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-imagine-text-subtle">
-              Angle
-            </div>
-            <p className="text-sm text-imagine-text-muted leading-relaxed">{path.angle}</p>
+        <div className="space-y-1">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-imagine-text-subtle">
+            Angle
           </div>
-        )}
+          <EditableText
+            value={path.angle}
+            onSave={(v) => onRename({ angle: v }, 'angle')}
+            color={path.color}
+            placeholder="Sous quel angle cette trajectoire traite le problème."
+            multiline={false}
+          />
+        </div>
 
         {path.keyMoves.length > 0 && (
           <Section title="Gestes" hint={`${path.keyMoves.length}`}>
@@ -120,7 +166,8 @@ function PathCard({
             </Button>
           )}
         </div>
-      </div>
+
+        </div>
     </motion.div>
   );
 }
@@ -130,6 +177,8 @@ export default function ProjectionStep() {
   const setActivePath = useImagineStore((s) => s.setActivePath);
   const setTraceStep = useImagineStore((s) => s.setTraceStep);
   const addPaths = useImagineStore((s) => s.addPaths);
+  const updatePath = useImagineStore((s) => s.updatePath);
+  const appendEvent = useImagineStore((s) => s.appendEvent);
   const { project, eliminate, restore, pending, error } = useTrace();
   const [manualTitle, setManualTitle] = useState('');
 
@@ -227,6 +276,16 @@ export default function ProjectionStep() {
             }}
             onEliminate={() => eliminate(path)}
             onRestore={() => restore(path)}
+            onRename={(updates, what) => {
+              updatePath(trace.id, path.id, updates);
+              appendEvent(
+                makeEvent('correction', 'user', `Trajectoire corrigée — ${what}`, {
+                  detail: String(updates.title ?? updates.thesis ?? updates.angle ?? ''),
+                  pathId: path.id,
+                  color: path.color,
+                })
+              );
+            }}
           />
         ))}
       </div>

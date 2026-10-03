@@ -12,13 +12,8 @@ import TraceCanvas from '@/components/canvas/TraceCanvas';
 import TraceOutline from '@/components/canvas/TraceOutline';
 import {
   WelcomeScreen,
-  SparkInput,
-  Toolbar,
-  Sidebar,
-  CommandPalette,
-  MiniMap,
 } from '@/components/ui';
-import { ProjectionBoard } from '@/components/projection';
+import { ProjectionBoard, TracePalette } from '@/components/projection';
 import { useImagineStore } from '@/store';
 import { cn } from '@/lib/utils';
 
@@ -119,14 +114,6 @@ export default function Home() {
                     <TraceOutline />
                   )}
 
-                  {mapKind === 'board' && (
-                    <>
-                      <Toolbar />
-                      <Sidebar />
-                      <MiniMap />
-                    </>
-                  )}
-
                   {hasTrace && (
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 rounded-xl glass px-1.5 py-1.5">
                       <button
@@ -159,8 +146,7 @@ export default function Home() {
               )}
             </AnimatePresence>
 
-            <SparkInput />
-            <CommandPalette />
+            <TracePalette />
 
             {/* Bascule de vue */}
             <ViewSwitch
