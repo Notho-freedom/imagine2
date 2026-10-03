@@ -22,9 +22,11 @@ import {
   Undo2,
 } from 'lucide-react';
 import { useImagineStore } from '@/store';
+import { useTrace } from '@/hooks/useTrace';
 import { cn } from '@/lib/utils';
 import { traceLayout, pathEvidence, type TraceEdge, type TraceNode } from '@/lib/trace';
 import { ThoughtField } from './ThoughtField';
+import { EliminateLayer, useEliminate } from '@/components/projection/Eliminate';
 
 // ========================================
 // Lien
@@ -364,6 +366,8 @@ export default function TraceCanvas() {
   const setTraceStep = useImagineStore((s) => s.setTraceStep);
   const setPathStatus = useImagineStore((s) => s.setPathStatus);
   const deletePath = useImagineStore((s) => s.deletePath);
+  const { eliminate } = useTrace();
+  const { target, ask, clear } = useEliminate();
 
   const [hoverPath, setHoverPath] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -584,7 +588,7 @@ export default function TraceCanvas() {
               setSelected(null);
               window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }));
             }}
-            onEliminate={() => setPathStatus(trace.id, selectedPath.id, 'eliminated')}
+            onEliminate={() => ask(selectedPath)}
             onRestore={() =>
               setPathStatus(
                 trace.id,
@@ -672,6 +676,15 @@ export default function TraceCanvas() {
       <p className="absolute bottom-5 left-1/2 -translate-x-1/2 text-[11px] text-imagine-text-subtle/60 pointer-events-none">
         Clique une trajectoire pour la travailler
       </p>
+
+      <EliminateLayer
+        target={target}
+        onConfirm={(because) => {
+          if (target) eliminate(target, because);
+          clear();
+        }}
+        onCancel={clear}
+      />
     </div>
   );
 }

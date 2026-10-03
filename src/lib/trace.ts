@@ -1028,6 +1028,21 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
         lines.push('');
       }
     }
+
+    // Ce qu'on renonce, au moment exact où on s'engage
+    const dropped = trace.paths.filter(
+      (p) =>
+        p.status === 'eliminated' &&
+        (p.decisionId ?? null) === trace.chosenDecisionId
+    );
+    if (dropped.length > 0) {
+      lines.push('**Ce que cette décision abandonne**');
+      lines.push('');
+      dropped.forEach((p) => {
+        lines.push(`- ${p.title}${p.eliminatedBecause ? ` — ${p.eliminatedBecause}` : ' — *sans motif donné*'}`);
+      });
+      lines.push('');
+    }
     lines.push('');
     lines.push('**Premiers gestes**');
     lines.push('');
@@ -1040,6 +1055,42 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
       lines.push('');
     }
     lines.push(`> ${v.closing}`);
+    lines.push('');
+  }
+
+  // Ce qu'on a refusé de prendre — la moitié d'une décision
+  const abandoned = trace.paths.filter((p) => p.status === 'eliminated');
+  if (abandoned.length > 0) {
+    lines.push('### Ce qui a été écarté');
+    lines.push('');
+    lines.push(
+      'Une décision est autant ce qu\'on renonce que ce qu\'on retient. Voici ce qui a été mis de côté, et pourquoi.'
+    );
+    lines.push('');
+    abandoned.forEach((p) => {
+      const ev = pathEvidence(p);
+      lines.push(`- **${p.title}** — ${p.thesis}`);
+      lines.push(`  _Motif_ : ${p.eliminatedBecause || 'aucun motif donné'}`);
+      lines.push(
+        `  _Ce qu'on en sait_ : ${ev.label}${ev.level === 0 ? ' — jamais descendue' : ''}`
+      );
+    });
+    lines.push('');
+  }
+
+  // Les virages tentés
+  const turns = trace.paths.flatMap((p) => p.branches);
+  if (turns.length > 0) {
+    lines.push('### Virages');
+    lines.push('');
+    lines.push('Les moments où un autre chemin était ouvert.');
+    lines.push('');
+    turns.forEach((b) => {
+      lines.push(`- **${b.question}**`);
+      lines.push(`  - Écarté : ${b.alternative}`);
+      lines.push(`  - Retenu : ${b.chosen}`);
+      if (b.costOfChoice) lines.push(`  - Ce qu'on perd : ${b.costOfChoice}`);
+    });
     lines.push('');
   }
 

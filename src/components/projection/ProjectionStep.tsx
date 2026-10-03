@@ -14,6 +14,7 @@ import { makeEvent, pathsOfDecision } from '@/lib/trace';
 import { cn } from '@/lib/utils';
 import { Bullets, Button, ErrorNote, Panel, Section, Tag, Thinking } from './ui';
 import { EditableText } from './Editable';
+import { EliminateLayer, useEliminate } from './Eliminate';
 import type { ThoughtPath } from '@/types';
 
 function PathCard({
@@ -181,6 +182,7 @@ export default function ProjectionStep() {
   const appendEvent = useImagineStore((s) => s.appendEvent);
   const { project, eliminate, restore, pending, error } = useTrace();
   const [manualTitle, setManualTitle] = useState('');
+  const { target, ask, clear } = useEliminate();
 
   if (!trace) return null;
 
@@ -277,7 +279,7 @@ export default function ProjectionStep() {
               setActivePath(path.id);
               setTraceStep(4);
             }}
-            onEliminate={() => eliminate(path)}
+            onEliminate={() => ask(path)}
             onRestore={() => restore(path)}
             onRename={(updates, what) => {
               updatePath(trace.id, path.id, updates);
@@ -327,6 +329,15 @@ export default function ProjectionStep() {
           </Button>
         </div>
       </Panel>
+
+      <EliminateLayer
+        target={target}
+        onConfirm={(because) => {
+          if (target) eliminate(target, because);
+          clear();
+        }}
+        onCancel={clear}
+      />
     </div>
   );
 }

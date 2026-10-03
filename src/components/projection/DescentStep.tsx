@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight,
   ChevronRight,
+  EyeOff,
   GitBranch,
   Loader2,
   Send,
@@ -21,6 +22,7 @@ import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
 import { cn } from '@/lib/utils';
 import { pathsOfDecision } from '@/lib/trace';
+import { EliminateLayer, useEliminate } from './Eliminate';
 import { Bullets, Button, ErrorNote, Panel, Section, Tag, Thinking } from './ui';
 import type { BranchPoint, DescentEntry, ThoughtPath } from '@/types';
 
@@ -276,7 +278,8 @@ export default function DescentStep() {
   const setTraceStep = useImagineStore((s) => s.setTraceStep);
   const removeDescent = useImagineStore((s) => s.removeDescent);
   const deleteBranch = useImagineStore((s) => s.deleteBranch);
-  const { descend, fork, pending, error } = useTrace();
+  const { descend, fork, eliminate, restore, pending, error } = useTrace();
+  const { target, ask, clear } = useEliminate();
 
   const [probe, setProbe] = useState('');
   const [forking, setForking] = useState<number | null>(null);
@@ -367,9 +370,18 @@ export default function DescentStep() {
                     {path.thesis}
                   </p>
                 </div>
-                <Tag color={path.color}>
-                  {path.timeline.length} passage{path.timeline.length > 1 ? 's' : ''}
-                </Tag>
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  <Tag color={path.color}>
+                    {path.timeline.length} passage{path.timeline.length > 1 ? 's' : ''}
+                  </Tag>
+                  <button
+                    onClick={() => ask(path)}
+                    className="flex items-center gap-1.5 text-[11px] text-imagine-text-subtle hover:text-imagine-forge transition-colors"
+                  >
+                    <EyeOff className="w-3 h-3" />
+                    Écarter
+                  </button>
+                </div>
               </div>
             </Panel>
 
@@ -531,6 +543,15 @@ export default function DescentStep() {
             </AnimatePresence>
           </div>
         ) : null}
+
+        <EliminateLayer
+          target={target}
+          onConfirm={(because) => {
+            if (target) eliminate(target, because);
+            clear();
+          }}
+          onCancel={clear}
+        />
       </div>
     </div>
   );

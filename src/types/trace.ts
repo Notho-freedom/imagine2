@@ -142,6 +142,12 @@ export interface ThoughtPath extends PathMoves {
   depth: number;
   timeline: DescentEntry[];
   branches: BranchPoint[];
+  /**
+   * Pourquoi cette trajectoire a été écartée.
+   * Une décision sans ce qui a été abandonné n'est pas une décision : c'est
+   * une préférence. C'est ce que le lecteur cherchera d'abord.
+   */
+  eliminatedBecause: string;
   scores: PathScores | null;
   createdAt: string;
   updatedAt: string;

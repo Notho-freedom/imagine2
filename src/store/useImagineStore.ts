@@ -175,7 +175,12 @@ interface ImagineState {
     parent?: { pathId: string; entryIndex: number; branch: BranchPoint }
   ) => string[];
   updatePath: (traceId: string, pathId: string, updates: Partial<ThoughtPath>) => void;
-  setPathStatus: (traceId: string, pathId: string, status: ThoughtPath['status']) => void;
+  setPathStatus: (
+    traceId: string,
+    pathId: string,
+    status: ThoughtPath['status'],
+    because?: string
+  ) => void;
   addDescent: (traceId: string, pathId: string, entry: Omit<DescentEntry, 'id' | 'pathId' | 'createdAt'>) => void;
   removeDescent: (traceId: string, pathId: string, entryId: string) => void;
   deletePath: (traceId: string, pathId: string) => void;
@@ -273,6 +278,7 @@ export function migrateTrace(input: any): ThoughtTrace {
             }))
           : [],
         scores: p.scores ?? null,
+        eliminatedBecause: p.eliminatedBecause ?? '',
         depth: typeof p.depth === 'number' ? p.depth : 0,
         origin: p.origin ?? 'ai',
       }))
@@ -1115,6 +1121,7 @@ export const useImagineStore = create<ImagineState>()(
                 depth: parentPath ? parentPath.depth + 1 : 0,
                 timeline: [],
                 branches: [],
+                eliminatedBecause: '',
                 scores: null,
                 createdAt: now,
                 updatedAt: now,
@@ -1152,13 +1159,19 @@ export const useImagineStore = create<ImagineState>()(
           });
         },
 
-        setPathStatus: (traceId, pathId, status) => {
+        setPathStatus: (traceId, pathId, status, because) => {
           set((state) => {
             const trace = state.traces.find((t) => t.id === traceId);
             if (!trace) return;
             const path = trace.paths.find((p) => p.id === pathId);
             if (!path) return;
             path.status = status;
+            // Rétablir efface le motif : la raison ne vaut plus.
+            if (status === 'eliminated') {
+              path.eliminatedBecause = because ?? path.eliminatedBecause ?? '';
+            } else {
+              path.eliminatedBecause = '';
+            }
             path.updatedAt = touch();
             trace.updatedAt = touch();
           });

@@ -30,6 +30,7 @@ import {
   CRITERION_DIRECTION,
   weakestEvidence,
   isBlind,
+  pathEvidence,
 } from '@/lib/trace';
 import type { FalsifierCheck, FalsifierStatus } from '@/types';
 
@@ -156,7 +157,7 @@ function FalsifierRow({ check }: { check: FalsifierCheck }) {
 export default function VerdictStep() {
   const trace = useImagineStore((s) => s.traces.find((t) => t.id === s.activeTraceId));
   const setTraceStep = useImagineStore((s) => s.setTraceStep);
-  const { arbitrate, commit, pending, error } = useTrace();
+  const { arbitrate, commit, restore, pending, error } = useTrace();
 
   if (!trace) return null;
 
@@ -191,6 +192,12 @@ export default function VerdictStep() {
 
   const chosen = trace.paths.find((p) => p.id === v.recommendedPathId);
   const live = trace.paths.filter((p) => p.status !== 'eliminated');
+  const abandoned = trace.paths.filter(
+    (p) => p.status === 'eliminated' && (p.decisionId ?? null) === trace.chosenDecisionId
+  );
+  const untakenBranches = trace.paths
+    .filter((p) => (p.decisionId ?? null) === trace.chosenDecisionId)
+    .flatMap((p) => p.branches);
   const color = chosen?.color ?? '#34D399';
   const checks = v.checks ?? [];
   const pendingCount = checks.filter((c) => c.status === 'pending').length;
@@ -256,6 +263,100 @@ export default function VerdictStep() {
           </Section>
         </Panel>
       </div>
+
+      {/* Ce qu'on abandonne — à lire juste avant de s'engager */}
+      {abandoned.length > 0 && !committed && (
+        <Panel className="p-5 space-y-4">
+          <Section
+            title="Ce que vous abandonnez"
+            hint={`${abandoned.length} trajectoire${abandoned.length > 1 ? 's' : ''}`}
+            color="#8B949E"
+          >
+            <p className="text-xs text-imagine-text-subtle leading-relaxed">
+              Vous ne retenez pas la meilleure trajectoire. Vous renoncez à toutes les
+              autres. C&apos;est la première chose qu&apos;on cherchera à lire dans six mois.
+            </p>
+          </Section>
+
+          <div className="space-y-2">
+            {abandoned.map((p) => {
+              const ev = pathEvidence(p);
+              const blind = ev.level === 0;
+              return (
+                <div
+                  key={p.id}
+                  className="rounded-lg border border-white/5 px-3.5 py-3 bg-white/[0.015]"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5"
+                      style={{ background: p.color, opacity: 0.6 }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-imagine-text-muted line-through decoration-white/20">
+                        {p.title}
+                      </div>
+                      <p className="text-xs text-imagine-text-subtle mt-1 leading-relaxed">
+                        {p.eliminatedBecause || (
+                          <span className="text-imagine-spark/80 italic">
+                            Écartée sans motif. Personne n&apos;a dit pourquoi.
+                          </span>
+                        )}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-imagine-text-subtle/70">
+                        <span>{ev.label}</span>
+                        {blind && (
+                          <>
+                            <span>·</span>
+                            <span className="text-imagine-spark/80">
+                              jamais descendue
+                            </span>
+                          </>
+                        )}
+                        {p.timeline.length > 0 && (
+                          <>
+                            <span>·</span>
+                            <span>{p.timeline.length} passages</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="quiet"
+                      className="shrink-0"
+                      onClick={() => restore(p)}
+                      title="Rétablir cette trajectoire — cela rouvre la décision"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {untakenBranches.length > 0 && (
+            <div className="pt-3 border-t border-white/5">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-imagine-text-subtle mb-2">
+                Virages non pris
+              </div>
+              <div className="space-y-1.5">
+                {untakenBranches.map((b) => (
+                  <div key={b.id} className="text-xs leading-relaxed">
+                    <span className="text-imagine-text-muted">{b.question}</span>
+                    {b.costOfChoice && (
+                      <span className="text-imagine-text-subtle">
+                        {' '}
+                        — <span className="text-imagine-forge/70">{b.costOfChoice}</span>
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Panel>
+      )}
 
       {/* Falsificateurs : le seul endroit où une décision peut être cassée */}
       <Panel className="p-5 space-y-4">

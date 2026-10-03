@@ -573,12 +573,14 @@ const findDecision = useCallback(async () => {
   // ------------------------------------------------
 
   const eliminate = useCallback(
-    (path: ThoughtPath) => {
+    (path: ThoughtPath, because?: string) => {
       if (!trace) return;
-      setPathStatus(trace.id, path.id, 'eliminated');
+      setPathStatus(trace.id, path.id, 'eliminated', because);
       appendEvent(
         makeEvent('elimination', 'user', `« ${path.title} » écartée`, {
-          detail: path.thesis,
+          detail: because?.trim()
+            ? `${path.thesis.slice(0, 120)} — ${because.trim()}`
+            : path.thesis.slice(0, 160),
           pathId: path.id,
           color: path.color,
         })
