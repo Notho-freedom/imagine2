@@ -240,6 +240,81 @@ const touch = () => new Date().toISOString();
 // Store
 // ========================================
 
+// ========================================
+// Migration
+//
+// Chaque champ ajouté au modèle casse les tracés déjà enregistrés. Plutôt
+// que de defensive-partout dans l'interface, on remet à niveau au moment
+// de la réhydratation : une seule règle, qui couvre tous les changements
+// passés et à venir.
+// ========================================
+
+export function migrateTrace(input: any): ThoughtTrace {
+  const t = input ?? {};
+
+  const paths: ThoughtPath[] = Array.isArray(t.paths)
+    ? t.paths.map((p: any) => ({
+        ...p,
+        parentPathId: p.parentPathId ?? null,
+        rootPathId: p.rootPathId ?? p.parentPathId ?? null,
+        decisionId: p.decisionId ?? null,
+        timeline: Array.isArray(p.timeline) ? p.timeline : [],
+        branches: Array.isArray(p.branches)
+          ? p.branches.map((b: any) => ({
+              ...b,
+              id: b.id ?? generateId(),
+              childPathId: b.childPathId ?? null,
+              question: b.question ?? '',
+              alternative: b.alternative ?? '',
+              chosen: b.chosen ?? '',
+              costOfChoice: b.costOfChoice ?? '',
+              atEntryIndex: typeof b.atEntryIndex === 'number' ? b.atEntryIndex : 0,
+              createdAt: b.createdAt ?? t.createdAt ?? new Date().toISOString(),
+            }))
+          : [],
+        scores: p.scores ?? null,
+        depth: typeof p.depth === 'number' ? p.depth : 0,
+        origin: p.origin ?? 'ai',
+      }))
+    : [];
+
+  return {
+    ...t,
+    id: t.id ?? generateId(),
+    title: t.title ?? 'Décision',
+    spark: t.spark ?? '',
+    context: t.context ?? '',
+    horizon: t.horizon ?? '',
+    seedKind: t.seedKind === 'confusion' ? 'confusion' : 'idea',
+    decisions: Array.isArray(t.decisions) ? t.decisions : [],
+    chosenDecisionId: t.chosenDecisionId ?? null,
+    reading: t.reading
+      ? { ...t.reading, revision: t.reading.revision ?? 0, feedback: t.reading.feedback ?? null }
+      : null,
+    criteria: Array.isArray(t.criteria) && t.criteria.length
+      ? t.criteria.map((c: any) => ({
+          ...c,
+          weight: normalizeWeight(c.weight),
+          enabled: c.enabled ?? true,
+          origin: c.origin ?? 'default',
+        }))
+      : DEFAULT_CRITERIA.map((c) => ({ ...c })),
+    paths,
+    confrontation: t.confrontation
+      ? {
+          ...t.confrontation,
+          criteria: Array.isArray(t.confrontation.criteria) ? t.confrontation.criteria : [],
+          rows: Array.isArray(t.confrontation.rows) ? t.confrontation.rows : [],
+        }
+      : null,
+    verdict: t.verdict ? { ...t.verdict, checks: Array.isArray(t.verdict.checks) ? t.verdict.checks : [] } : null,
+    events: Array.isArray(t.events) ? t.events : [],
+    status: t.status === 'arbitrated' ? 'arbitrated' : 'open',
+    createdAt: t.createdAt ?? new Date().toISOString(),
+    updatedAt: t.updatedAt ?? t.createdAt ?? new Date().toISOString(),
+  } as ThoughtTrace;
+}
+
 export const useImagineStore = create<ImagineState>()(
   devtools(
     persist(
@@ -1392,18 +1467,39 @@ setConfrontation: (traceId, confrontation, onlyPathIds) => {
       })),
       {
         name: 'imagine-storage',
+        version: 2,
+        // Les nœuds et liens de l'ancien canvas ne sont plus affichés nulle
+        // part : on cesse de les écrire, et la migration les vide.
         partialize: (state) => ({
-          project: state.project,
-          nodes: state.nodes,
-          edges: state.edges,
           traces: state.traces,
           activeTraceId: state.activeTraceId,
           ui: {
             showGrid: state.ui.showGrid,
             showMinimap: state.ui.showMinimap,
             view: state.ui.view,
+            mapKind: state.ui.mapKind,
           },
         }),
+        merge: (persisted, current) => {
+          const saved = (persisted ?? {}) as Partial<ImagineState>;
+          const traces = Array.isArray(saved.traces) ? saved.traces.map(migrateTrace) : [];
+
+          const activeTraceId = traces.some((t) => t.id === saved.activeTraceId)
+            ? (saved.activeTraceId ?? null)
+            : (traces[0]?.id ?? null);
+
+          return {
+            ...current,
+            traces,
+            activeTraceId,
+            nodes: [],
+            edges: [],
+            ui: {
+              ...current.ui,
+              ...(saved.ui ?? {}),
+            },
+          } as ImagineState;
+        },
       }
     ),
     { name: 'ImagineStore' }

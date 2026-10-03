@@ -1,1 +1,1 @@
-export { useImagineStore, default } from './useImagineStore';
+export { useImagineStore, migrateTrace, default } from './useImagineStore';
