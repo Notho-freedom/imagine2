@@ -7,9 +7,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Layers, Waypoints, Network, Grid3x3 } from 'lucide-react';
-import { Canvas } from '@/components/canvas';
+import { Layers, Waypoints, Network, ListTree } from 'lucide-react';
 import TraceCanvas from '@/components/canvas/TraceCanvas';
+import TraceOutline from '@/components/canvas/TraceOutline';
 import {
   WelcomeScreen,
   SparkInput,
@@ -113,15 +113,19 @@ export default function Home() {
                   transition={{ duration: 0.2 }}
                   className="w-full h-full"
                 >
-                  {mapKind === 'trace' && hasTrace ? <TraceCanvas /> : <Canvas />}
+                  {mapKind === 'trace' && hasTrace ? (
+                    <TraceCanvas />
+                  ) : (
+                    <TraceOutline />
+                  )}
 
-                  {mapKind !== 'trace' || !hasTrace ? (
+                  {mapKind === 'board' && (
                     <>
                       <Toolbar />
                       <Sidebar />
                       <MiniMap />
                     </>
-                  ) : null}
+                  )}
 
                   {hasTrace && (
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 rounded-xl glass px-1.5 py-1.5">
@@ -146,8 +150,8 @@ export default function Home() {
                             : 'text-imagine-text-subtle hover:text-imagine-text hover:bg-white/5'
                         )}
                       >
-                        <Grid3x3 className="w-3.5 h-3.5" />
-                        Nœuds
+                        <ListTree className="w-3.5 h-3.5" />
+                        Plan
                       </button>
                     </div>
                   )}

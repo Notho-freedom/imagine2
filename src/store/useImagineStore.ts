@@ -173,6 +173,8 @@ interface ImagineState {
   setPathStatus: (traceId: string, pathId: string, status: ThoughtPath['status']) => void;
   addDescent: (traceId: string, pathId: string, entry: Omit<DescentEntry, 'id' | 'pathId' | 'createdAt'>) => void;
   removeDescent: (traceId: string, pathId: string, entryId: string) => void;
+  deletePath: (traceId: string, pathId: string) => void;
+  deleteBranch: (traceId: string, pathId: string, branchId: string) => void;
   setConfrontation: (traceId: string, confrontation: Confrontation) => void;
   setVerdict: (traceId: string, verdict: Verdict) => void;
   setFalsifierStatus: (
@@ -1024,6 +1026,81 @@ export const useImagineStore = create<ImagineState>()(
             if (!path) return;
             path.timeline = path.timeline.filter((e) => e.id !== entryId);
             if (path.timeline.length === 0) path.status = 'open';
+            path.updatedAt = touch();
+            trace.updatedAt = touch();
+          });
+        },
+
+        /**
+         * Suppression réelle. Retire la trajectoire, ses sous-trajectoires,
+         * ses descentes, et le point de bifurcation qui y menait chez le
+         * parent. La trace reste cohérente, le journal garde la trace de la
+         * suppression.
+         */
+        deletePath: (traceId, pathId) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+
+            const target = trace.paths.find((p) => p.id === pathId);
+            if (!target) return;
+
+            // La trajectoire et toute sa descendance
+            const doomed = new Set<string>();
+            const collect = (id: string) => {
+              doomed.add(id);
+              trace.paths.filter((p) => p.parentPathId === id).forEach((c) => collect(c.id));
+            };
+            collect(pathId);
+
+            const removed = trace.paths.filter((p) => doomed.has(p.id));
+
+            // On détache les branches qui pointaient vers ces trajectoires
+            for (const p of trace.paths) {
+              p.branches = p.branches.filter(
+                (b) => !removed.some((r) => b.chosen.startsWith(r.title))
+              );
+            }
+
+            trace.paths = trace.paths.filter((p) => !doomed.has(p.id));
+
+            // L'arbitrage ne peut pas désigner une trajectoire disparue
+            if (trace.verdict && doomed.has(trace.verdict.recommendedPathId)) {
+              trace.verdict = null;
+              trace.confrontation = null;
+              trace.status = 'open';
+            }
+            if (trace.confrontation) {
+              trace.confrontation.rows = trace.confrontation.rows.filter(
+                (r) => !doomed.has(r.pathId)
+              );
+              for (const p of trace.paths) p.scores = null;
+            }
+
+            trace.events.push({
+              id: generateId(),
+              kind: 'elimination',
+              actor: 'user',
+              label: `« ${target.title} » supprimée`,
+              detail:
+                removed.length > 1
+                  ? `avec ${removed.length - 1} sous-trajectoire${removed.length > 2 ? 's' : ''}`
+                  : undefined,
+              color: target.color,
+              createdAt: new Date().toISOString(),
+            });
+
+            trace.updatedAt = touch();
+          });
+        },
+
+        deleteBranch: (traceId, pathId, branchId) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            const path = trace.paths.find((p) => p.id === pathId);
+            if (!path) return;
+            path.branches = path.branches.filter((b) => b.id !== branchId);
             path.updatedAt = touch();
             trace.updatedAt = touch();
           });
