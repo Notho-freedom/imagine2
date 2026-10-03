@@ -38,17 +38,30 @@ Vérifier que le moteur répond : `GET /api/trace` renvoie l'état de la configu
 IMAGINE n'est pas une carte mentale. C'est un moteur qui prend une idée et la pousse jusqu'à
 une décision, en gardant la chaîne complète.
 
+### Deux portes
+
+La plupart des décisions ne commencent pas par une idée claire. Elles commencent par « je ne sais
+plus ». L'accueil propose donc deux entrées :
+
+- **J'ai une idée** — tu sais ce que tu veux trancher
+- **Je ne sais pas quoi décider** — tu écris ce qui te retourne, et le moteur **sépare les
+  questions que tu n'arrives plus à distinguer**. Un « non » à l'une n'est pas un « non » aux
+  autres. Tu choisis par laquelle commencer, et le parcours continue normalement
+
 Le parcours tient en sept étapes :
 
 | # | Étape | Ce qui se passe |
 |---|-------|-----------------|
-| 01 | **L'étincelle** | L'utilisateur pose son idée, son contexte, son horizon de décision |
+| 01 | **L'étincelle** | L'utilisateur pose son idée — ou sa confusion, que le moteur démêle en 2 à 4 décisions distinctes |
 | 02 | **Lecture** | L'IA montre ce qu'elle a compris : reformulation, sujet réel, intention perçue, présupposés non dits, tensions, contraintes, inconnues, enjeu — et **la question décisive** |
 | 03 | **Projection** | L'IA produit des trajectoires **irréconciliables** entre elles, chacune avec sa couleur |
 | 04 | **Descente** | Dans une trajectoire, on avance jusqu'au mur : conséquences, décision possible, coût, inconnues restantes |
-| 05 | **Confrontation** | Matrice de notation sur des critères communs, avec justification par note, et le **discriminant** — la question qui départagerait |
+| 05 | **Confrontation** | Matrice de notation sur des critères choisis et pesés par l'utilisateur, avec justification par note, et le **discriminant** |
 | 06 | **Arbitrage** | Une trajectoire est retenue. L'IA assume, dit ce que ça implique, et ce qui prouverait qu'elle a tort |
 | 07 | **Tracé** | Le journal complet, exportable en Markdown. C'est le livrable |
+
+Le parcours lui-même est annoté : étincelle, lecture, projection, descente, confrontation,
+arbitrage, tracé.
 
 ### Principes
 
@@ -224,6 +237,7 @@ Chaque trajectoire reçoit une couleur stable, tirée de cette palette :
 ## 📋 Roadmap
 
 ### Moteur de trace ✅
+- [x] **Démêlage** : partir d'une confusion, en trouver les décisions dedans
 - [x] Lecture profonde de l'idée (présupposés, tensions, question décisive)
 - [x] **Lecture contestable** : édition, refus d'éléments, relecture par le moteur
 - [x] Projection en trajectoires colorées et divergentes

@@ -267,12 +267,35 @@ export interface TraceDeliberation {
 
 export type TraceStatus = 'open' | 'arbitrated';
 
+/**
+ * Une confusion contient presque toujours plusieurs décisions emmêlées.
+ * Les nommer, c'est déjà décider de ce qu'on cherche.
+ */
+export interface CandidateDecision {
+  id: string;
+  title: string;
+  statement: string;
+  /** Ce qui devrait être vrai pour que ce soit bien la décision à prendre */
+  wouldConfirm: string;
+  /** Ce que coûte le fait de ne pas trancher celle-là */
+  costOfIgnoring: string;
+  origin: 'user' | 'ai';
+}
+
+export type SeedKind = 'idea' | 'confusion';
+
 export interface ThoughtTrace {
   id: string;
   title: string;
   spark: string;
   context: string;
   horizon: string;
+  /** Une idée claire, ou une confusion à démêler */
+  seedKind: SeedKind;
+  /** Présent quand le tracé part d'une confusion */
+  decisions: CandidateDecision[];
+  /** La décision retenue pour continueqr le parcours */
+  chosenDecisionId: string | null;
   reading: IdeaReading | null;
   /** Les critères de confrontation retenus, pondérés par l'utilisateur */
   criteria: ComparisonCriterion[];
@@ -310,6 +333,34 @@ export interface ReadRequest {
   rejected?: string[];
   added?: string[];
   note?: string;
+  /**
+   * La décision à trancher. Quand on part d'une confusion, ce n'est pas
+   * l'énoncé initial qui fait foi mais la décision retenue parmi les
+   * candidates.
+   */
+  decision?: string;
+}
+
+export interface FindDecisionRequest {
+  confusion: string;
+  context?: string;
+}
+
+export interface FindDecisionPayload {
+  /** Ce qui rend la situation confuse, nommé */
+  whatMuddles: string;
+  /** La confusion masque ceci */
+  actuallyAbout: string;
+  decisions: Array<{
+    title: string;
+    statement: string;
+    wouldConfirm: string;
+    costOfIgnoring: string;
+  }>;
+  /** Index de celle qui mérite d'être tranchée en premier */
+  recommended: number;
+  /** Ce qui reste embrouillé même après avoir tranché */
+  stillMuddled: string;
 }
 
 export interface PathPayload {

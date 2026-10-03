@@ -32,6 +32,24 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       // ------------------------------------------------
+      // 0. TROUVER LA DÉCISION
+      // ------------------------------------------------
+      case 'findDecision': {
+        const confusion = (data?.confusion || '').trim();
+        if (!confusion) {
+          return NextResponse.json(
+            { success: false, error: 'Aucune confusion à démêler' },
+            { status: 400 }
+          );
+        }
+        const result = await traceAI.findDecision({
+          confusion,
+          context: data?.context || '',
+        });
+        return NextResponse.json({ success: true, result });
+      }
+
+      // ------------------------------------------------
       // 1. LECTURE
       // ------------------------------------------------
       case 'readIdea': {
@@ -46,6 +64,7 @@ export async function POST(request: NextRequest) {
           spark,
           context: data?.context || '',
           horizon: data?.horizon || '',
+          decision: data?.decision || '',
           draft: data?.draft || undefined,
           rejected: Array.isArray(data?.rejected) ? data.rejected : [],
           added: Array.isArray(data?.added) ? data.added : [],
@@ -207,6 +226,7 @@ export async function GET() {
     service: 'trace',
     model: traceAI.model,
     capabilities: [
+      'findDecision',
       'readIdea',
       'projectPaths',
       'deepenPath',

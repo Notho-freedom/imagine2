@@ -701,6 +701,36 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
 
   lines.push('## 1. L\'étincelle');
   lines.push('');
+
+  if (trace.seedKind === 'confusion') {
+    const chosen = trace.decisions.find((d) => d.id === trace.chosenDecisionId);
+    lines.push(
+      chosen
+        ? `*Démêlé à partir d'une confusion. Ce tracé tranche :*\n> **${chosen.statement}**`
+        : '*Démêlé à partir d\'une confusion. La décision retenue n\'a pas été choisie.*'
+    );
+    lines.push('');
+
+    if (trace.decisions.length > 0) {
+      lines.push('**Ce que l\'on hésitait entre**');
+      lines.push('');
+      trace.decisions.forEach((d) => {
+        const mark = d.id === trace.chosenDecisionId ? ' ← retenue' : '';
+        lines.push(`- **${d.title}**${mark}`);
+        if (d.statement && d.statement !== d.title) lines.push(`  ${d.statement}`);
+        if (d.wouldConfirm) lines.push(`  _Confirmerait si_ : ${d.wouldConfirm}`);
+        if (d.costOfIgnoring) lines.push(`  _Coûte tant que_ : ${d.costOfIgnoring}`);
+      });
+      lines.push('');
+    }
+  } else if (trace.decisions.length > 0) {
+    const chosen = trace.decisions.find((d) => d.id === trace.chosenDecisionId);
+    if (chosen) {
+      lines.push(`*La décision à trancher :*\n> **${chosen.statement}**`);
+      lines.push('');
+    }
+  }
+
   lines.push(trace.spark);
   if (trace.context.trim()) {
     lines.push('');

@@ -11,6 +11,7 @@ import { DEFAULT_CRITERIA, makeEvent } from '@/lib/trace';
 import type {
   Confrontation,
   DescentPayload,
+  FindDecisionPayload,
   IdeaReading,
   ReadingPayload,
   ThoughtPath,
@@ -49,6 +50,7 @@ async function callTrace<T>(
 }
 
 type PendingAction =
+  | 'confusion'
   | 'reading'
   | 'projection'
   | 'descent'
@@ -85,6 +87,9 @@ setReading,
     removeDescent,
     setConfrontation,
     setVerdict,
+    setDecisions,
+    chooseDecision,
+    addDecision,
     reopenVerdict,
     commitVerdict,
   } = useImagineStore();
@@ -115,9 +120,55 @@ setReading,
     []
   );
 
-  // ------------------------------------------------
-  // 1. Lecture
-  // ------------------------------------------------
+// ------------------------------------------------
+// 0. Trouver la décision
+// ------------------------------------------------
+
+const findDecision = useCallback(async () => {
+  if (!trace || !trace.spark.trim()) {
+    setError('Décris ce qui te retourne avant qu\'on le démêle');
+    return null;
+  }
+
+  const result = await run<FindDecisionPayload>('confusion', () =>
+    callTrace<FindDecisionPayload>('findDecision', {
+      confusion: trace.spark,
+      context: trace.context,
+    })
+  );
+
+  if (!result) return null;
+
+  if (result.decisions.length === 0) {
+    setError('Le moteur n\'a pas trouvé de décision à démêler');
+    return null;
+  }
+
+  const decisions = result.decisions.map((d) => ({
+    ...d,
+    id: generateId(),
+    origin: 'ai' as const,
+  }));
+  const recommended = decisions[result.recommended] ?? decisions[0];
+
+  setDecisions(trace.id, decisions);
+
+  appendEvent(
+    makeEvent('statement', 'ai', `${decisions.length} décisions démêlées`, {
+      detail: decisions.map((d) => d.title).join(' · '),
+    })
+  );
+
+  // On ne tranche pas à la place de l'utilisateur : on signale par où
+  // commencer, et on l'attend sur le choix. La liste s'affiche sous son
+  // énoncé, dans la même étape.
+  chooseDecision(trace.id, recommended.id);
+  return result;
+}, [trace, run, setDecisions, chooseDecision, appendEvent]);
+
+// ------------------------------------------------
+// 1. Lecture
+// ------------------------------------------------
 
   const read = useCallback(
     async (options?: { refine?: boolean }) => {
@@ -651,6 +702,7 @@ return {
     setActivePath,
 
     declareSpark,
+    findDecision,
     read,
     editReading,
     rejectItem,

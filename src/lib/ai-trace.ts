@@ -9,6 +9,8 @@ import type {
   ComparisonCriterion,
   ConfrontationPayload,
   DescentPayload,
+  FindDecisionPayload,
+  FindDecisionRequest,
   PathPayload,
   PathScoreRow,
   ReadRequest,
@@ -29,6 +31,94 @@ import {
   normalizeWeight,
   weightedTotal,
 } from '@/lib/trace';
+
+// ========================================
+// 0. Trouver la décision
+//
+// Le cas le plus fréquent n'est pas « j'ai une idée », c'est « je ne sais
+// pas ce que je dois décider ». Une confusion contient presque toujours
+// plusieurs décisions emmêlées. Les nommer, c'est déjà avancer.
+// ========================================
+
+async function findDecision(input: FindDecisionRequest): Promise<FindDecisionPayload> {
+  const material = [
+    `Confusion :\n${input.confusion}`,
+    input.context ? `Contexte :\n${input.context}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  const response = await callGroq(
+    [
+      {
+        role: 'system',
+        content: `Tu es l'écouteur d'IMAGINE. Quelqu'un te dit ce qui le retourne. Il ne sait pas ce qu'il doit décider — c'est précisément pour ça qu'il est là.
+
+Ton travail n'est pas de le rassurer, ni de proposer des solutions. Ton travail est de nommer ce qu'il hésite entre. Quelqu'un qui dit « je ne sais plus si je dois quitter mon poste ou rester » n'a pas un problème, il en a deux ou trois qu'il ne sépare pas.
+
+Sépare. Un « non » à l'un n'est pas un « non » aux autres. C'est là toute la valeur de ton travail.
+
+Retourne STRICTEMENT ce JSON, sans texte autour, sans markdown :
+{
+  "whatMuddles": "Ce qui rend la situation confuse, en 2 à 3 phrases. Ce qui ne va pas, pas ce qu'il faut faire.",
+  "actuallyAbout": "Le vrai sujet, en une phrase. De quoi parle-t-on en réalité ?",
+  "decisions": [
+    {
+      "title": "3 à 6 mots. Un verbe à l'infinitif : « Partir ou rester », « Refondre ou clôturer ».",
+      "statement": "La question à trancher, formulée comme une question à laquelle on peut répondre par oui ou non. Une seule par décision.",
+      "wouldConfirm": "Ce qui devrait être vrai pour que ce soit bien LA décision, et pas un symptôme. Une phrase.",
+      "costOfIgnoring": "Ce qui continue de coûter tant que cette décision n'est pas prise. Une phrase, concrète."
+    }
+  ],
+  "recommended": 0,
+  "stillMuddled": "Ce qui restera embrouillé même après avoir tranché celle-là. Une phrase. Si rien ne reste, écris « rien »."
+}
+
+Règles :
+- 2 à 4 décisions. Jamais une seule : si tu n'en vois qu'une, c'est que tu n'as pas assez cherché.
+- Elles doivent être indépendantes. Résoudre l'une ne résout pas les autres.
+- Ne propose AUCUNE solution. Tu nommes des questions, tu n'y réponds pas.
+- « recommended » désigne celle qu'il faut trancher en premier, parce que les autres en dépendent ou qu'il n'en peut plus. L'index, pas le texte.
+
+Écris en français. N'invente jamais de chiffre, de statistique ni de source.`,
+      },
+      { role: 'user', content: material },
+    ],
+    { temperature: 0.5, maxTokens: 1800, json: true }
+  );
+
+  const parsed = safeJsonParse(response.choices[0]?.message?.content || '{}');
+
+  const decisions = (Array.isArray(parsed.decisions) ? parsed.decisions : [])
+    .filter((d: any) => typeof d?.title === 'string' && typeof d?.statement === 'string')
+    .slice(0, 4)
+    .map((d: any) => ({
+      title: asString(d.title),
+      statement: asString(d.statement),
+      wouldConfirm: asString(d.wouldConfirm),
+      costOfIgnoring: asString(d.costOfIgnoring),
+    }));
+
+  if (decisions.length === 0) {
+    return {
+      whatMuddles: '',
+      actuallyAbout: '',
+      decisions: [],
+      recommended: 0,
+      stillMuddled: '',
+    };
+  }
+
+  const idx = typeof parsed.recommended === 'number' ? parsed.recommended : 0;
+
+  return {
+    whatMuddles: asString(parsed.whatMuddles),
+    actuallyAbout: asString(parsed.actuallyAbout),
+    decisions,
+    recommended: Math.max(0, Math.min(decisions.length - 1, idx)),
+    stillMuddled: asString(parsed.stillMuddled),
+  };
+}
 
 // ========================================
 // 1. Lecture - comprendre avant de répondre
@@ -81,7 +171,9 @@ async function readIdea(input: ReadRequest): Promise<ReadingPayload> {
     : '';
 
   const material = [
-    `Idée :\n${input.spark}`,
+    input.decision
+      ? `Décision à trancher :\n${input.decision}\n\nElle est sortie d'une confusion que l'utilisateur a décrite ainsi :\n${input.spark}`
+      : `Idée :\n${input.spark}`,
     input.context ? `Contexte :\n${input.context}` : '',
     input.horizon ? `Horizon souhaité :\n${input.horizon}` : '',
   ]
@@ -672,6 +764,7 @@ N'invente jamais de chiffre, de statistique, de citation, de nom d'étude ni de 
 // ========================================
 
 export const traceAI = {
+  findDecision,
   readIdea,
   projectPaths,
   deepenPath,

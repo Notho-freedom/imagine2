@@ -19,6 +19,8 @@ import type {
   ThoughtPath,
   IdeaReading,
   ReadingFeedback,
+  SeedKind,
+  CandidateDecision,
   Confrontation,
   Verdict,
   FalsifierStatus,
@@ -145,11 +147,14 @@ interface ImagineState {
   clearSuggestions: () => void;
 
   // Actions - Trace
-  createTrace: (seed?: { title?: string; spark?: string }) => string;
+  createTrace: (seed?: { title?: string; spark?: string; seedKind?: SeedKind }) => string;
   setActiveTrace: (id: string) => void;
   deleteTrace: (id: string) => void;
   setTraceStep: (step: number) => void;
   setActivePath: (id: string | null) => void;
+  setDecisions: (traceId: string, decisions: CandidateDecision[]) => void;
+  addDecision: (traceId: string, statement: string) => void;
+  chooseDecision: (traceId: string, decisionId: string) => void;
   updateTrace: (id: string, updates: Partial<ThoughtTrace>) => void;
   setCriteria: (traceId: string, criteria: ComparisonCriterion[]) => void;
   addCriterion: (traceId: string, label: string) => void;
@@ -731,6 +736,7 @@ export const useImagineStore = create<ImagineState>()(
           const id = generateId();
           const now = touch();
           const title = seed?.title?.trim() || 'Nouvelle décision';
+          const seedKind: SeedKind = seed?.seedKind ?? 'idea';
 
           const trace: ThoughtTrace = {
             id,
@@ -738,6 +744,9 @@ export const useImagineStore = create<ImagineState>()(
             spark: seed?.spark ?? '',
             context: '',
             horizon: '',
+            seedKind,
+            decisions: [],
+            chosenDecisionId: null,
             reading: null,
             criteria: DEFAULT_CRITERIA.map((c) => ({ ...c })),
             paths: [],
@@ -748,7 +757,7 @@ export const useImagineStore = create<ImagineState>()(
                 id: generateId(),
                 kind: 'statement',
                 actor: 'user',
-                label: 'Tracé ouvert',
+                label: seedKind === 'confusion' ? 'Confusion posée' : 'Tracé ouvert',
                 detail: title,
                 createdAt: now,
               },
@@ -767,6 +776,47 @@ export const useImagineStore = create<ImagineState>()(
           });
 
           return id;
+        },
+
+        setDecisions: (traceId, decisions) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            trace.decisions = decisions;
+            if (!trace.chosenDecisionId && decisions.length === 1) {
+              trace.chosenDecisionId = decisions[0].id;
+            }
+            trace.updatedAt = touch();
+          });
+        },
+
+        addDecision: (traceId, statement) => {
+          const clean = statement.trim();
+          if (!clean) return;
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            if (!trace) return;
+            trace.decisions.push({
+              id: generateId(),
+              title: clean.length > 44 ? `${clean.slice(0, 41)}…` : clean,
+              statement: clean,
+              wouldConfirm: '',
+              costOfIgnoring: '',
+              origin: 'user',
+            });
+            trace.updatedAt = touch();
+          });
+        },
+
+        chooseDecision: (traceId, decisionId) => {
+          set((state) => {
+            const trace = state.traces.find((t) => t.id === traceId);
+            const d = trace?.decisions.find((x) => x.id === decisionId);
+            if (!trace || !d) return;
+            trace.chosenDecisionId = decisionId;
+            trace.title = d.title;
+            trace.updatedAt = touch();
+          });
         },
 
         setActiveTrace: (id) => {

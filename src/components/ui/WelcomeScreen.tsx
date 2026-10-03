@@ -2,338 +2,275 @@
 
 // ========================================
 // IMAGINE - Welcome Screen
-// La porte d'entrée : on commence par un tracé, pas par une carte
+// L'accueil est ton travail, pas une publicité.
+// Deux portes : une idée, ou une confusion.
 // ========================================
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  ArrowRight,
-  Clock,
-  GitBranch,
-  Plus,
-  Scale,
-  Sparkles,
-  Target,
-  TrendingUp,
-  Zap,
-} from 'lucide-react';
+import { ArrowRight, Clock, GitBranch, Sparkles, Split, Trash2 } from 'lucide-react';
 import { useImagineStore } from '@/store';
-import { TRACE_STEPS } from '@/lib/trace';
+import { cn } from '@/lib/utils';
+import { deliberationOf, formatDuration } from '@/lib/trace';
+import { ImagineMark, SparkGlyph } from '@/components/projection/marks';
+import type { SeedKind } from '@/types';
 
-interface WelcomeScreenProps {
-  onStart: () => void;
-}
+export default function WelcomeScreen({ onStart }: { onStart: () => void }) {
+  const traces = useImagineStore((s) => s.traces);
+  const createTrace = useImagineStore((s) => s.createTrace);
+  const setActiveTrace = useImagineStore((s) => s.setActiveTrace);
+  const deleteTrace = useImagineStore((s) => s.deleteTrace);
+  const [confirm, setConfirm] = useState<string | null>(null);
 
-interface FloatingSpark {
-  id: string;
-  x: number;
-  y: number;
-  color: string;
-  size: number;
-  delay: number;
-}
-
-const STEP_ICON: Record<string, React.ElementType> = {
-  intake: Zap,
-  reading: Sparkles,
-  projection: GitBranch,
-  descent: TrendingUp,
-  confrontation: Scale,
-  verdict: Target,
-  ledger: Clock,
-};
-
-export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
-  const { traces, createTrace, setActiveTrace } = useImagineStore();
-  const [floatingSparks, setFloatingSparks] = useState<FloatingSpark[]>([]);
-
-  useEffect(() => {
-    const colors = ['#4FD1C5', '#A78BFA', '#FFB347', '#F472B6'];
-    setFloatingSparks(
-      colors.map((color, i) => ({
-        id: `spark-${i}`,
-        x: 10 + Math.random() * 78,
-        y: 16 + Math.random() * 66,
-        color,
-        size: 26 + Math.random() * 14,
-        delay: i * 2,
-      }))
-    );
-  }, []);
-
-  const startFresh = () => {
-    createTrace();
-    onStart();
-  };
-
-  const openTrace = (id: string) => {
-    setActiveTrace(id);
+  const start = (kind: SeedKind) => {
+    createTrace({ seedKind: kind });
     onStart();
   };
 
   return (
-    <div className="fixed inset-0 bg-imagine-bg overflow-hidden">
-      {/* Constellation */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-60">
-        {Array.from({ length: 40 }).map((_, i) => {
-          const x = (i * 37) % 100;
-          const y = (i * 61) % 100;
-          const x2 = ((i + 1) * 37) % 100;
-          const y2 = ((i + 1) * 61) % 100;
-          return (
-            <g key={i}>
-              <line
-                x1={`${x}%`}
-                y1={`${y}%`}
-                x2={`${x2}%`}
-                y2={`${y2}%`}
-                stroke="#4FD1C5"
-                strokeWidth="0.4"
-                strokeOpacity="0.08"
-              />
-              <circle
-                cx={`${x}%`}
-                cy={`${y}%`}
-                r={1 + (i % 3)}
-                fill="#E6EDF3"
-                opacity={0.15 + (i % 4) * 0.08}
-              >
-                <animate
-                  attributeName="opacity"
-                  values="0.1;0.35;0.1"
-                  dur={`${4 + (i % 5)}s`}
-                  repeatCount="indefinite"
-                />
-              </circle>
-            </g>
-          );
-        })}
-      </svg>
-
-      {/* Trajectoires flottantes */}
-      <AnimatePresence>
-        {floatingSparks.map((spark) => (
+    <div className="fixed inset-0 bg-imagine-bg overflow-y-auto">
+      <div className="min-h-screen max-w-3xl mx-auto px-6 py-14 flex flex-col">
+        {/* Tête */}
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="text-center"
+        >
           <motion.div
-            key={spark.id}
-            className="absolute pointer-events-none"
-            style={{ left: `${spark.x}%`, top: `${spark.y}%` }}
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{
-              opacity: 0.5,
-              scale: 1,
-              x: [0, 12, -12, 0],
-              y: [0, -18, 6, 0],
-            }}
-            transition={{
-              opacity: { duration: 1 },
-              scale: { duration: 0.6, delay: spark.delay * 0.2 },
-              x: { duration: 9 + spark.delay, repeat: Infinity, ease: 'easeInOut' },
-              y: { duration: 7 + spark.delay, repeat: Infinity, ease: 'easeInOut' },
-            }}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6 }}
+            className="mb-6"
           >
-            <div
-              className="rounded-full blur-2xl"
-              style={{
-                width: spark.size * 3,
-                height: spark.size * 3,
-                background: spark.color,
-                opacity: 0.16,
-              }}
-            />
+            <ImagineMark size={72} />
           </motion.div>
-        ))}
-      </AnimatePresence>
 
-      {/* Nébuleuses */}
-      <motion.div
-        className="absolute w-[600px] h-[600px] rounded-full bg-gradient-to-br from-imagine-nebula/25 via-imagine-intuition/10 to-transparent blur-3xl"
-        animate={{ x: [0, 80, 0], y: [0, -50, 0], scale: [1, 1.2, 1] }}
-        transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut' }}
-        style={{ top: '-10%', left: '8%' }}
-      />
-      <motion.div
-        className="absolute w-[520px] h-[520px] rounded-full bg-gradient-to-br from-imagine-projection/15 via-transparent to-imagine-intuition/10 blur-3xl"
-        animate={{ x: [0, -60, 0], y: [0, 60, 0], scale: [1, 1.15, 1] }}
-        transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
-        style={{ bottom: '4%', right: '4%' }}
-      />
+          <h1 className="text-4xl font-light text-imagine-text tracking-tight mb-2">
+            IMAGINE
+          </h1>
+          <p className="text-sm text-imagine-text-subtle">
+            Un moteur de décision qui garde la trace
+          </p>
+        </motion.div>
 
-      {/* Contenu */}
-      <div className="relative z-10 min-h-screen overflow-y-auto">
-        <div className="min-h-screen flex items-center justify-center px-6 py-16">
-          <div className="w-full max-w-3xl">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: 'easeOut' }}
-              className="text-center"
-            >
-              <motion.div
-                initial={{ scale: 0.85, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.15 }}
-                className="mb-8"
-              >
-                <motion.div
-                  className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-imagine-projection via-imagine-intuition to-imagine-nebula mb-5 relative"
-                  animate={{
-                    boxShadow: [
-                      '0 0 20px rgba(79, 209, 197, 0.25)',
-                      '0 0 44px rgba(79, 209, 197, 0.45)',
-                      '0 0 20px rgba(79, 209, 197, 0.25)',
-                    ],
-                  }}
-                  transition={{ duration: 3.5, repeat: Infinity }}
-                >
-                  <Sparkles className="w-9 h-9 text-white" />
-                  {[...Array(6)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      className="absolute w-1.5 h-1.5 rounded-full bg-imagine-projection"
-                      animate={{
-                        x: [0, Math.cos((i * 60 * Math.PI) / 180) * 46],
-                        y: [0, Math.sin((i * 60 * Math.PI) / 180) * 46],
-                        opacity: [0.75, 0],
+        {/* Les deux portes */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.15 }}
+          className="grid gap-4 sm:grid-cols-2 mt-12"
+        >
+          <Door
+            onClick={() => start('idea')}
+            color="#FFB347"
+            glyph={<SparkGlyph size={22} color="#FFB347" />}
+            title="J'ai une idée"
+            body="Tu sais ce que tu veux trancher. On la lit, on la déploie, on la pousse jusqu'à une décision."
+            cta="Poser l'idée"
+          />
+          <Door
+            onClick={() => start('confusion')}
+            color="#A78BFA"
+            glyph={<Split className="w-5 h-5" />}
+            title="Je ne sais pas quoi décider"
+            body="Ça arrive souvent. Écris ce qui te retourne — le moteur séparera les questions que tu n'arrives plus à distinguer."
+            cta="Démêler"
+          />
+        </motion.div>
+
+        {/* Tes tracés */}
+        {traces.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="mt-14"
+          >
+            <div className="flex items-center gap-2 text-imagine-text-muted text-xs mb-4 px-1">
+              <Clock className="w-3.5 h-3.5" />
+              <span>Tes tracés</span>
+              <span className="text-imagine-text-subtle/60">{traces.length}</span>
+            </div>
+
+            <div className="space-y-2">
+              {traces.map((t, i) => {
+                const d = deliberationOf(t);
+                const open = confirm === t.id;
+                return (
+                  <motion.div
+                    key={t.id}
+                    initial={{ opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.3, delay: 0.35 + i * 0.05 }}
+                  >
+                    <button
+                      onClick={() => {
+                        setActiveTrace(t.id);
+                        onStart();
                       }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        delay: i * 0.3,
-                        ease: 'easeOut',
-                      }}
-                    />
-                  ))}
-                </motion.div>
-
-                <h1 className="text-5xl font-bold text-imagine-text mb-2 tracking-tight">
-                  IMAGINE
-                </h1>
-                <p className="text-lg text-imagine-text-muted">
-                  Le moteur de décision traçable
-                </p>
-              </motion.div>
-
-              <p className="text-sm text-imagine-text-subtle leading-relaxed max-w-xl mx-auto mb-10">
-                Tu avances une idée. Le moteur te montre ce qu&apos;il a compris, projette les
-                trajectoires possibles, t&apos;aide à descendre dans chacune jusqu&apos;au mur, puis
-                tranche. Tu repars avec une décision — et le chemin entier qui y mène.
-              </p>
-
-              <motion.button
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.5, delay: 0.35 }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.99 }}
-                onClick={startFresh}
-                className="group relative inline-flex items-center gap-3 px-9 py-4.5 rounded-2xl bg-gradient-to-r from-imagine-projection to-imagine-projection-light text-imagine-bg font-semibold text-lg transition-all"
-                style={{ paddingTop: '1.1rem', paddingBottom: '1.1rem' }}
-              >
-                <Zap className="w-5 h-5" />
-                <span>Nouveau tracé</span>
-                <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-                <motion.div
-                  className="absolute inset-0 rounded-2xl bg-imagine-projection opacity-0 blur-2xl -z-10"
-                  animate={{ opacity: [0.25, 0.45, 0.25] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                />
-              </motion.button>
-            </motion.div>
-
-            {/* Tracés existants */}
-            {traces.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.45 }}
-                className="mt-14 text-left bg-imagine-bg-elevated/30 backdrop-blur-sm rounded-2xl p-5 border border-white/5"
-              >
-                <div className="flex items-center gap-2 text-imagine-text-muted text-sm mb-4">
-                  <Clock className="w-4 h-4" />
-                  <span>Tracés</span>
-                </div>
-                <div className="space-y-2">
-                  {traces.slice(0, 6).map((t, index) => (
-                    <motion.button
-                      key={t.id}
-                      initial={{ opacity: 0, x: -16 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.35, delay: 0.5 + index * 0.06 }}
-                      whileHover={{ x: 4 }}
-                      onClick={() => openTrace(t.id)}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left group bg-white/[0.02] hover:bg-white/[0.05]"
+                      className="w-full flex items-center gap-3.5 rounded-xl border border-white/5 bg-imagine-surface/40 px-4 py-3.5 text-left group transition-all hover:border-white/15 hover:bg-imagine-surface/70"
                     >
-                      <div className="flex -space-x-1.5 shrink-0">
-                        {t.paths.slice(0, 4).map((p) => (
+                      {/* Les couleurs du parcours */}
+                      <div className="flex -space-x-1 shrink-0">
+                        {t.paths.length > 0 ? (
+                          t.paths.slice(0, 4).map((p) => (
+                            <span
+                              key={p.id}
+                              className="w-2.5 h-2.5 rounded-full border-2 border-imagine-bg"
+                              style={{ background: p.color }}
+                            />
+                          ))
+                        ) : (
                           <span
-                            key={p.id}
-                            className="w-2.5 h-2.5 rounded-full border-2 border-imagine-bg-elevated"
-                            style={{ background: p.color }}
+                            className="w-2.5 h-2.5 rounded-full border-2 border-imagine-bg"
+                            style={{ background: t.seedKind === 'confusion' ? '#A78BFA' : '#FFB347' }}
                           />
-                        ))}
+                        )}
                       </div>
+
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-imagine-text truncate group-hover:text-imagine-projection transition-colors">
-                          {t.title}
-                        </p>
-                        <p className="text-xs text-imagine-text-subtle truncate">
-                          {t.paths.length} trajectoire{t.paths.length > 1 ? 's' : ''}
-                          {t.verdict ? ' · tranché' : t.reading ? ' · en cours' : ' · à lire'}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-imagine-text truncate group-hover:text-imagine-projection transition-colors">
+                            {t.title}
+                          </span>
+                          {t.status === 'arbitrated' && (
+                            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-imagine-mature/15 text-imagine-mature">
+                            tranché
+                            </span>
+                          )}
+                          {t.seedKind === 'confusion' && t.decisions.length > 1 && (
+                            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-imagine-drift/15 text-imagine-drift">
+                              {t.decisions.length} décisions
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-imagine-text-subtle mt-0.5 truncate">
+                          {t.spark || 'Idée non posée'}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-imagine-text-subtle/70">
+                          <span>{formatDuration(d.totalMs)}</span>
+                          {d.descentes > 0 && (
+                            <>
+                              <span>·</span>
+                              <span>{d.descentes} passages</span>
+                            </>
+                          )}
+                          {d.pending > 0 && (
+                            <>
+                              <span>·</span>
+                              <span className="text-imagine-spark/80">
+                                {d.pending} faux à vérifier
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
+
                       <ArrowRight className="w-4 h-4 text-imagine-text-subtle opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                    </motion.button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
+                    </button>
 
-            {/* Le parcours */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.6 }}
-              className="mt-14"
-            >
-              <div className="text-[10px] uppercase tracking-[0.18em] text-imagine-text-subtle text-center mb-6">
-                Le parcours d&apos;un tracé
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-                {TRACE_STEPS.map((s, i) => {
-                  const Icon = STEP_ICON[s.kind] ?? Sparkles;
-                  return (
-                    <motion.div
-                      key={s.kind}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.4, delay: 0.65 + i * 0.06 }}
-                      className="rounded-lg border border-white/5 bg-white/[0.02] px-2 py-3 text-center"
-                    >
-                      <Icon className="w-4 h-4 mx-auto mb-2 text-imagine-projection/70" />
-                      <div className="text-[10px] tabular-nums text-imagine-text-subtle">
-                        {String(s.index).padStart(2, '0')}
-                      </div>
-                      <div className="text-[11px] text-imagine-text-muted mt-0.5 leading-tight">
-                        {s.label}
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </motion.div>
+                    <div className="flex justify-end -mt-1 px-2">
+                      {open ? (
+                        <span className="flex items-center gap-1.5 py-1">
+                          <span className="text-[11px] text-imagine-forge">
+                            Supprimer&nbsp;?
+                          </span>
+                          <button
+                            onClick={() => {
+                              deleteTrace(t.id);
+                              setConfirm(null);
+                            }}
+                            className="px-2 py-1 rounded-md bg-imagine-forge/15 text-imagine-forge text-[11px] hover:bg-imagine-forge/25 transition-colors"
+                          >
+                            Oui
+                          </button>
+                          <button
+                            onClick={() => setConfirm(null)}
+                            className="px-2 py-1 rounded-md text-imagine-text-subtle text-[11px] hover:bg-white/5 transition-colors"
+                          >
+                            Non
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setConfirm(t.id)}
+                          title="Supprimer ce tracé"
+                          className="p-1.5 rounded-md text-imagine-text-subtle/40 opacity-0 hover:text-imagine-forge hover:bg-imagine-forge/10 transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
 
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 1.2 }}
-              className="mt-10 text-xs text-imagine-text-subtle text-center"
-            >
-              Le canvas reste accessible : c&apos;est la vue Carte, pour travailler en spatial.
-            </motion.p>
-          </div>
-        </div>
+        <div className="flex-1" />
+
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="mt-16 text-[11px] text-imagine-text-subtle/50 text-center leading-relaxed"
+        >
+          Sept étapes, de l&apos;étincelle au tracé. Tu repars avec une décision
+          <br />
+          et la chaîne entière qui y mène.
+        </motion.p>
       </div>
     </div>
+  );
+}
+
+function Door({
+  onClick,
+  color,
+  glyph,
+  title,
+  body,
+  cta,
+}: {
+  onClick: () => void;
+  color: string;
+  glyph: React.ReactNode;
+  title: string;
+  body: string;
+  cta: string;
+}) {
+  return (
+    <motion.button
+      whileHover={{ y: -3 }}
+      whileTap={{ scale: 0.99 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+      onClick={onClick}
+      className="group relative text-left rounded-2xl border border-white/5 bg-imagine-surface/40 p-5 overflow-hidden transition-colors hover:border-white/15"
+      style={{ ['--door' as string]: color }}
+    >
+      <div
+        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+        style={{ background: `radial-gradient(120% 100% at 0% 0%, ${color}12, transparent 60%)` }}
+      />
+      <div className="relative space-y-3">
+        <span
+          className="inline-flex items-center justify-center w-11 h-11 rounded-xl"
+          style={{ background: `${color}18`, border: `1px solid ${color}33` }}
+        >
+          {glyph}
+        </span>
+        <div className="text-base font-medium text-imagine-text">{title}</div>
+        <p className="text-xs text-imagine-text-subtle leading-relaxed">{body}</p>
+        <div
+          className="flex items-center gap-1.5 pt-1 text-xs font-medium transition-transform group-hover:translate-x-0.5"
+          style={{ color }}
+        >
+          {cta}
+          <ArrowRight className="w-3.5 h-3.5" />
+        </div>
+      </div>
+    </motion.button>
   );
 }
