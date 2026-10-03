@@ -22,6 +22,7 @@ import ConfrontationStep from './ConfrontationStep';
 import VerdictStep from './VerdictStep';
 import LedgerStep from './LedgerStep';
 import HypothesisBar from './HypothesisBar';
+import { StepMark } from './marks';
 import { Button, Empty, Tag } from './ui';
 
 export default function ProjectionBoard() {
@@ -163,11 +164,12 @@ export default function ProjectionBoard() {
           </div>
         </div>
 
-        <div className="flex-1 py-3 space-y-0.5 overflow-y-auto">
+        <div className="flex-1 py-4 space-y-1 overflow-y-auto">
           {TRACE_STEPS.map((s) => {
             const reachable = isStepReachable(trace, s.kind);
             const satisfied = isStepSatisfied(trace, s.kind);
             const active = s.index === step;
+            const passed = s.index < step && satisfied;
 
             return (
               <button
@@ -175,43 +177,77 @@ export default function ProjectionBoard() {
                 disabled={!reachable}
                 onClick={() => setStep(s.index)}
                 className={cn(
-                  'w-full text-left px-5 py-3 transition-all relative group',
-                  active && 'bg-white/[0.03]',
-                  !reachable && 'opacity-30 cursor-not-allowed'
+                  'w-full text-left px-3 py-2.5 transition-all relative group rounded-lg',
+                  active && 'bg-white/[0.04]',
+                  !reachable && 'opacity-25 cursor-not-allowed'
                 )}
               >
                 {active && (
                   <motion.div
                     layoutId="step-marker"
-                    className="absolute left-0 top-0 bottom-0 w-0.5 bg-imagine-projection"
+                    className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-imagine-projection"
+                    style={{ boxShadow: '0 0 12px rgba(79,209,197,0.7)' }}
                   />
                 )}
-                <div className="flex items-center gap-3">
-                  <span
+
+                <div className="flex items-start gap-3">
+                  {/* La marque de l'étape */}
+                  <div
                     className={cn(
-                      'text-[10px] tabular-nums w-4 shrink-0',
-                      active ? 'text-imagine-projection' : 'text-imagine-text-subtle'
+                      'shrink-0 mt-0.5 transition-all',
+                      active && 'scale-110'
                     )}
+                    style={{
+                      color: active
+                        ? '#4FD1C5'
+                        : passed
+                          ? 'rgba(52,211,153,0.7)'
+                          : 'rgba(139,148,158,0.6)',
+                      filter: active ? 'drop-shadow(0 0 8px rgba(79,209,197,0.6))' : undefined,
+                    }}
                   >
-                    {String(s.index).padStart(2, '0')}
-                  </span>
-                  <div className="min-w-0">
-                    <div
+                    <StepMark kind={s.kind} size={active ? 24 : 20} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className={cn(
+                          'text-[10px] tabular-nums shrink-0',
+                          active ? 'text-imagine-projection' : 'text-imagine-text-subtle/60'
+                        )}
+                      >
+                        {String(s.index).padStart(2, '0')}
+                      </span>
+                      <span
+                        className={cn(
+                          'text-sm leading-tight',
+                          active
+                            ? 'text-imagine-text'
+                            : passed
+                              ? 'text-imagine-text-muted'
+                              : 'text-imagine-text-muted group-hover:text-imagine-text'
+                        )}
+                      >
+                        {s.label}
+                      </span>
+                    </div>
+                    <p
                       className={cn(
-                        'text-sm leading-tight',
-                        active
-                          ? 'text-imagine-text'
-                          : 'text-imagine-text-muted group-hover:text-imagine-text'
+                        'text-[11px] mt-0.5 leading-snug',
+                        active ? 'text-imagine-text-subtle' : 'text-imagine-text-subtle/50'
                       )}
                     >
-                      {s.label}
-                    </div>
-                    <div className="text-[11px] text-imagine-text-subtle mt-0.5 truncate">
                       {s.question}
-                    </div>
+                    </p>
                   </div>
-                  {satisfied && !active && (
-                    <span className="ml-auto w-1 h-1 rounded-full bg-imagine-coherence shrink-0" />
+
+                  {passed && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="w-1.5 h-1.5 rounded-full bg-imagine-coherence shrink-0 mt-1.5"
+                    />
                   )}
                 </div>
               </button>
@@ -242,15 +278,30 @@ export default function ProjectionBoard() {
 
       {/* Contenu */}
       <main className="flex-1 min-w-0 overflow-y-auto">
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 px-8 h-14 bg-imagine-bg/80 backdrop-blur-md border-b border-white/5">
-          <div className="flex items-baseline gap-3 min-w-0">
-            <span className="text-[10px] tabular-nums text-imagine-text-subtle">
-              {String(current.index).padStart(2, '0')}
-            </span>
-            <h1 className="text-sm font-medium text-imagine-text">{current.label}</h1>
-            <span className="text-xs text-imagine-text-subtle truncate">
-              {current.question}
-            </span>
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 px-8 h-16 bg-imagine-bg/85 backdrop-blur-md border-b border-white/5">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <motion.span
+              key={current.kind}
+              initial={{ opacity: 0, scale: 0.8, rotate: -8 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              transition={{ duration: 0.35, ease: 'backOut' }}
+              className="shrink-0"
+              style={{ color: '#4FD1C5', filter: 'drop-shadow(0 0 10px rgba(79,209,197,0.45))' }}
+            >
+              <StepMark kind={current.kind} size={22} strokeWidth={1.4} />
+            </motion.span>
+
+            <div className="min-w-0">
+              <div className="flex items-baseline gap-2.5">
+                <span className="text-[10px] tabular-nums text-imagine-projection/70">
+                  {String(current.index).padStart(2, '0')}
+                </span>
+                <h1 className="text-sm font-medium text-imagine-text tracking-wide">
+                  {current.label}
+                </h1>
+              </div>
+              <p className="text-[11px] text-imagine-text-subtle truncate">{current.question}</p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
