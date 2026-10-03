@@ -20,6 +20,7 @@ import {
 import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
 import { cn } from '@/lib/utils';
+import { pathsOfDecision } from '@/lib/trace';
 import { Bullets, Button, ErrorNote, Panel, Section, Tag, Thinking } from './ui';
 import type { BranchPoint, DescentEntry, ThoughtPath } from '@/types';
 
@@ -283,8 +284,13 @@ export default function DescentStep() {
 
   if (!trace) return null;
 
-  const live = trace.paths.filter((p) => p.status !== 'eliminated');
-  const path = trace.paths.find((p) => p.id === activePathId) ?? live[0] ?? trace.paths[0] ?? null;
+  const live = pathsOfDecision(trace, trace.chosenDecisionId).filter(
+    (p) => p.status !== 'eliminated'
+  );
+  const scoped = pathsOfDecision(trace, trace.chosenDecisionId);
+  const fallback =
+    scoped.find((p) => p.id === activePathId) ?? live[0] ?? scoped[0] ?? null;
+  const path = fallback;
   const children = path
     ? trace.paths.filter((p) => p.parentPathId === path.id)
     : [];

@@ -151,6 +151,19 @@ Le bouton **Flux / Nœuds** bascule vers l'ancien canvas de cartes.
 
 ---
 
+### Plusieurs décisions dans un même tracé
+
+Une confusion démêlée contient plusieurs questions. Elles ne se résolvent pas ensemble : ce serait comparer des réponses à des questions différentes.
+
+Chaque trajectoire appartient donc à **une décision**. On en travaille une à la fois, avec un sélecteur dans le rail qui dit, pour chacune, combien de trajectoires elle porte et jusqu'où elles ont été descendues.
+
+Conséquences :
+
+- la confrontation ne compare que les trajectoires de la décision travaillée
+- une sous-trajectoire hérite de la décision de sa mère
+- le flux, le plan et l'export sont groupés par décision
+- changer de décision **conserve** le travail de l'autre, mais **rouvre** l'arbitrage : une décision rendue sur une question ne vaut rien sur une autre
+
 ## 🗺️ Vue Carte
 
 Le canvas infini reste accessible via le bouton en bas à gauche. C'est la vue spatiale : nœuds,
@@ -238,6 +251,7 @@ Chaque trajectoire reçoit une couleur stable, tirée de cette palette :
 
 ### Moteur de trace ✅
 - [x] **Démêlage** : partir d'une confusion, en trouver les décisions dedans
+- [x] **Cloisonnement par décision** : on ne confronte que des trajectoires d'une même question
 - [x] Lecture profonde de l'idée (présupposés, tensions, question décisive)
 - [x] **Lecture contestable** : édition, refus d'éléments, relecture par le moteur
 - [x] Projection en trajectoires colorées et divergentes

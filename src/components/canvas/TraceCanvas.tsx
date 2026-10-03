@@ -429,6 +429,25 @@ export default function TraceCanvas() {
   const focus = hoverPath ?? selected ?? activePathId;
   const selectedPath = selected ? trace.paths.find((p) => p.id === selected) ?? null : null;
 
+  // Deux questions différentes ne se mélangent pas à l'écran : on montre la
+  // décision travaillée, avec le sélecteur pour passer à l'autre.
+  const scopedIds = new Set(
+    trace.paths
+      .filter((p) => (p.decisionId ?? null) === trace.chosenDecisionId)
+      .map((p) => p.id)
+  );
+  const scoped = {
+    ...layout,
+    nodes: layout.nodes.filter(
+      (n) => n.kind === 'spark' || !n.pathId || scopedIds.has(n.pathId)
+    ),
+  };
+  const nodeIds = new Set(scoped.nodes.map((n) => n.id));
+  scoped.edges = scoped.edges.filter(
+    (e) => nodeIds.has(e.fromNodeId) && nodeIds.has(e.toNodeId)
+  );
+  const others = trace.paths.length - scopedIds.size;
+
   const dimmed = (n: TraceNode) => {
     if (!focus) return false;
     if (n.kind === 'spark') return false;
@@ -480,9 +499,13 @@ export default function TraceCanvas() {
   };
 
   // Champ de pensée
-  const live = trace.paths.filter((p) => p.status !== 'eliminated');
+  const live = scopedIds.size
+    ? trace.paths.filter(
+        (p) => scopedIds.has(p.id) && p.status !== 'eliminated'
+      )
+    : [];
   const attractors = live.map((p) => {
-    const n = layout.nodes.find((x) => x.id === `p:${p.id}`);
+    const n = scoped.nodes.find((x) => x.id === `p:${p.id}`);
     return n ? { x: n.x + n.w / 2, y: n.y + n.h / 2, color: p.color, weight: 1 + p.timeline.length * 0.4 } : null;
   }).filter(Boolean) as Array<{ x: number; y: number; color: string; weight: number }>;
 
@@ -499,11 +522,11 @@ export default function TraceCanvas() {
         onClick={() => setSelected(null)}
       >
         <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
-          {layout.edges.map((e) => (
+          {scoped.edges.map((e) => (
             <Flow key={e.id} edge={e} dim={edgeDimmed(e)} lit={edgeLit(e)} />
           ))}
 
-          {layout.nodes.map((n) => {
+          {scoped.nodes.map((n) => {
             if (n.kind === 'spark') {
               return <SparkNode key={n.id} node={n} onClick={() => onNodeClick(n)} />;
             }
@@ -579,16 +602,25 @@ export default function TraceCanvas() {
       </AnimatePresence>
 
       {/* Légende */}
-      <div className="absolute top-4 left-4 flex items-center gap-3 rounded-xl glass px-3.5 py-2.5 pointer-events-none">
-        <GitBranch className="w-4 h-4 text-imagine-projection" />
-        <div className="text-xs text-imagine-text-muted leading-tight">
-          <div className="text-imagine-text">{trace.paths.length} trajectoires</div>
-          <div className="text-imagine-text-subtle">
-            {trace.paths.reduce((n, p) => n + p.timeline.length, 0)} passages
-            {trace.paths.some((p) => p.branches.length > 0) &&
-              ` · ${trace.paths.reduce((n, p) => n + p.branches.length, 0)} virages`}
+      <div className="absolute top-4 left-4 rounded-xl glass px-3.5 py-2.5 pointer-events-none max-w-xs">
+        <div className="flex items-center gap-3">
+          <GitBranch className="w-4 h-4 text-imagine-projection shrink-0" />
+          <div className="text-xs text-imagine-text-muted leading-tight">
+            <div className="text-imagine-text">{scopedIds.size} trajectoires</div>
+            <div className="text-imagine-text-subtle">
+              {trace.paths.reduce((n, p) => n + p.timeline.length, 0)} passages
+              {trace.paths.some((p) => p.branches.length > 0) &&
+                ` · ${trace.paths.reduce((n, p) => n + p.branches.length, 0)} virages`}
+            </div>
           </div>
         </div>
+
+        {others > 0 && (
+          <p className="text-[10px] text-imagine-text-subtle/70 mt-1.5 pt-1.5 border-t border-white/5 leading-snug">
+            {others} trajectoire{others > 1 ? 's' : ''} appartiennent à une autre
+            décision — change de question dans le parcours.
+          </p>
+        )}
       </div>
 
       {chosenId && (

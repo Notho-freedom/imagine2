@@ -200,15 +200,11 @@ export default function TraceOutline() {
   const setPathStatus = useImagineStore((s) => s.setPathStatus);
   const deletePath = useImagineStore((s) => s.deletePath);
   const deleteTrace = useImagineStore((s) => s.deleteTrace);
+  const chooseDecision = useImagineStore((s) => s.chooseDecision);
 
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const roots = useMemo(
-    () => (trace ? trace.paths.filter((p) => p.parentPathId === null) : []),
-    [trace]
-  );
 
   if (!trace) {
     return (
@@ -223,15 +219,19 @@ export default function TraceOutline() {
     !q ||
     p.title.toLowerCase().includes(q) ||
     p.thesis.toLowerCase().includes(q) ||
-    p.timeline.some((e) => e.question.toLowerCase().includes(q) || e.analysis.toLowerCase().includes(q));
+    p.timeline.some(
+      (e) => e.question.toLowerCase().includes(q) || e.analysis.toLowerCase().includes(q)
+    );
 
   const visible = q
-    ? trace.paths.filter((p) => matches(p) || trace.paths.some((c) => c.parentPathId === p.id && matches(c)))
+    ? trace.paths.filter(
+        (p) =>
+          matches(p) ||
+          trace.paths.some((c) => c.parentPathId === p.id && matches(c))
+      )
     : trace.paths;
 
-  const shownRoots = roots.filter((p) => visible.some((v) => v.id === p.id));
   const d = deliberationOf(trace);
-  const shown = shownRoots.length;
 
   const toggle = (id: string) =>
     setExpanded((cur) => {
@@ -240,6 +240,31 @@ export default function TraceOutline() {
       else next.add(id);
       return next;
     });
+
+  /**
+   * Les questions d'un seul tracé, pour ne pas mélanger ce qui répond à
+   * des questions différentes dans la même lecture.
+   */
+  const groups: Array<{ id: string | null; label: string; paths: ThoughtPath[] }> = [];
+  const order: Array<string | null> = [];
+  trace.decisions.forEach((dec) => {
+    if (!order.includes(dec.id)) order.push(dec.id);
+  });
+  order.forEach((id) => {
+    groups.push({
+      id,
+      label: trace.decisions.find((x) => x.id === id)?.title ?? String(id),
+      paths: visible.filter((p) => p.decisionId === id),
+    });
+  });
+  const unassigned = visible.filter((p) => !order.includes(p.decisionId ?? null));
+  if (unassigned.length) {
+    groups.push({
+      id: null,
+      label: trace.seedKind === 'confusion' ? 'Non rattachées' : 'Trajectoires',
+      paths: unassigned,
+    });
+  }
 
   return (
     <div className="w-full h-full overflow-y-auto bg-imagine-bg">
@@ -329,37 +354,76 @@ export default function TraceOutline() {
           )}
         </div>
 
-        {/* Liste */}
         {trace.paths.length === 0 ? (
           <p className="text-sm text-imagine-text-subtle py-10 text-center">
             Aucune trajectoire. Posez une idée, ou pressez H pour une hypothèse.
           </p>
         ) : (
-          <div className="space-y-0.5">
-            {shownRoots.map((p) => (
-              <PathRow
-                key={p.id}
-                path={p}
-                depth={0}
-                all={visible}
-                expanded={expanded}
-                toggle={toggle}
-                onOpen={(id) => {
-                  setActivePath(id);
-                  setTraceStep(4);
-                }}
-                onEliminate={(id) => setPathStatus(trace.id, id, 'eliminated')}
-                onRestore={(id) =>
-                  setPathStatus(
-                    trace.id,
-                    id,
-                    trace.paths.find((x) => x.id === id)?.timeline.length ? 'explored' : 'open'
-                  )
-                }
-                onDelete={(id) => deletePath(trace.id, id)}
-              />
-            ))}
-            {shown === 0 && q && (
+          <div className="space-y-8">
+            {groups
+              .filter((g) => g.paths.length > 0)
+              .map((g) => {
+                const roots = g.paths.filter((p) => p.parentPathId === null);
+                const isCurrent = g.id === trace.chosenDecisionId;
+
+                return (
+                  <section key={g.id ?? 'none'}>
+                    {trace.decisions.length > 1 && (
+                      <button
+                        onClick={() => g.id && chooseDecision(trace.id, g.id)}
+                        className="w-full flex items-center gap-2.5 mb-2.5 text-left group"
+                      >
+                        <span
+                          className={cn(
+                            'text-[11px] uppercase tracking-[0.16em]',
+                            isCurrent ? 'text-imagine-drift' : 'text-imagine-text-subtle'
+                          )}
+                        >
+                          {g.label}
+                        </span>
+                        <span className="text-[10px] text-imagine-text-subtle/60">
+                          {g.paths.length} traj.
+                        </span>
+                        {!isCurrent && g.id && (
+                          <span className="text-[10px] text-imagine-text-subtle/0 group-hover:text-imagine-text-subtle transition-colors">
+                            travailler
+                          </span>
+                        )}
+                      </button>
+                    )}
+
+                    <div className="space-y-0.5">
+                      {roots.map((p) => (
+                        <PathRow
+                          key={p.id}
+                          path={p}
+                          depth={0}
+                          all={g.paths}
+                          expanded={expanded}
+                          toggle={toggle}
+                          onOpen={(id) => {
+                            setActivePath(id);
+                            setTraceStep(4);
+                          }}
+                          onEliminate={(id) => setPathStatus(trace.id, id, 'eliminated')}
+                          onRestore={(id) =>
+                            setPathStatus(
+                              trace.id,
+                              id,
+                              trace.paths.find((x) => x.id === id)?.timeline.length
+                                ? 'explored'
+                                : 'open'
+                            )
+                          }
+                          onDelete={(id) => deletePath(trace.id, id)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+
+            {visible.length === 0 && q && (
               <p className="text-sm text-imagine-text-subtle py-8 text-center">
                 Rien ne correspond à «&nbsp;{query}&nbsp;».
               </p>

@@ -180,7 +180,11 @@ interface ImagineState {
   removeDescent: (traceId: string, pathId: string, entryId: string) => void;
   deletePath: (traceId: string, pathId: string) => void;
   deleteBranch: (traceId: string, pathId: string, branchId: string) => void;
-  setConfrontation: (traceId: string, confrontation: Confrontation) => void;
+  setConfrontation: (
+    traceId: string,
+    confrontation: Confrontation,
+    onlyPathIds?: string[]
+  ) => void;
   setVerdict: (traceId: string, verdict: Verdict) => void;
   setFalsifierStatus: (
     traceId: string,
@@ -813,8 +817,39 @@ export const useImagineStore = create<ImagineState>()(
             const trace = state.traces.find((t) => t.id === traceId);
             const d = trace?.decisions.find((x) => x.id === decisionId);
             if (!trace || !d) return;
+
+            const same = trace.chosenDecisionId === decisionId;
             trace.chosenDecisionId = decisionId;
             trace.title = d.title;
+
+            // Changer de question, c'est recommencer une autre conversation :
+            // l'arbitrage rendu ne portait pas sur celle-là.
+            if (!same && (trace.verdict || trace.status === 'arbitrated')) {
+              const chosenId = trace.verdict?.recommendedPathId;
+              for (const p of trace.paths) {
+                if (p.id === chosenId) {
+                  p.status = p.timeline.length ? 'explored' : 'open';
+                  p.scores = null;
+                }
+              }
+              trace.confrontation = null;
+              trace.verdict = null;
+              trace.status = 'open';
+            }
+
+            // On saute vers une trajectoire de cette décision si elle en a une
+            const mine = trace.paths.find((p) => p.decisionId === decisionId);
+            state.ui.activePathId = mine?.id ?? null;
+
+            trace.events.push({
+              id: generateId(),
+              kind: 'statement',
+              actor: 'user',
+              label: 'Décision travaillée',
+              detail: d.statement,
+              createdAt: touch(),
+            });
+
             trace.updatedAt = touch();
           });
         },
@@ -977,6 +1012,11 @@ export const useImagineStore = create<ImagineState>()(
               ? trace.paths.find((p) => p.id === parent.pathId)
               : undefined;
 
+            // Une trajectoire appartient à la décision de sa mère ; une
+            // trajectoire racine à la décision actuellement travaillée.
+            const decisionId =
+              parentPath?.decisionId ?? trace.chosenDecisionId ?? null;
+
             for (const p of payloads) {
               const now = touch();
               const id = generateId();
@@ -987,6 +1027,7 @@ export const useImagineStore = create<ImagineState>()(
                 traceId,
                 parentPathId: parentPath?.id ?? null,
                 rootPathId: parentPath?.rootPathId ?? parentPath?.id ?? null,
+                decisionId,
                 color: nextPathColor(trace.paths),
                 title: p.title,
                 thesis: p.thesis,
@@ -1011,6 +1052,7 @@ export const useImagineStore = create<ImagineState>()(
               parentPath.branches.push({
                 ...parent.branch,
                 id: generateId(),
+                childPathId: created[0] ?? null,
                 atEntryIndex: parent.entryIndex,
                 chosen: parent.branch.chosen || parentPath.title,
                 createdAt: touch(),
@@ -1156,13 +1198,15 @@ export const useImagineStore = create<ImagineState>()(
           });
         },
 
-        setConfrontation: (traceId, confrontation) => {
+setConfrontation: (traceId, confrontation, onlyPathIds) => {
           set((state) => {
             const trace = state.traces.find((t) => t.id === traceId);
             if (!trace) return;
-            trace.confrontation = confrontation;
 
-            // Les trajectoires les mieux notées survivent
+            // Seules les trajectoires réellement confrontées gardent une note.
+            // Les autres gardent celle qu'elles avaient pour leur propre décision.
+            const keep = onlyPathIds ? new Set(onlyPathIds) : null;
+
             const ranked = [...confrontation.rows].sort((a, b) => b.total - a.total);
             ranked.forEach((row, i) => {
               const path = trace.paths.find((p) => p.id === row.pathId);
@@ -1170,13 +1214,20 @@ export const useImagineStore = create<ImagineState>()(
               path.scores = {
                 values: row.values,
                 rationale: row.rationale,
-                // Recalculé ici avec les poids du moment : si l'utilisateur
-                // les change ensuite, l'affichage suit, pas le stockage.
                 total: weightedTotal(row.values, trace.criteria ?? []),
               };
               if (i === 0) path.status = 'retained';
             });
 
+            if (keep) {
+              for (const p of trace.paths) {
+                if (!keep.has(p.id) && p.scores && p.status === 'retained') {
+                  p.status = p.timeline.length ? 'explored' : 'open';
+                }
+              }
+            }
+
+            trace.confrontation = confrontation;
             trace.updatedAt = touch();
           });
         },

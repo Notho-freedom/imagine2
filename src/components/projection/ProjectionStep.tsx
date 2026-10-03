@@ -10,7 +10,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Loader2, Plus, RefreshCw, Target, TriangleAlert } from 'lucide-react';
 import { useImagineStore } from '@/store';
 import { useTrace } from '@/hooks/useTrace';
-import { makeEvent } from '@/lib/trace';
+import { makeEvent, pathsOfDecision } from '@/lib/trace';
 import { cn } from '@/lib/utils';
 import { Bullets, Button, ErrorNote, Panel, Section, Tag, Thinking } from './ui';
 import { EditableText } from './Editable';
@@ -194,8 +194,11 @@ export default function ProjectionStep() {
     );
   }
 
-  const live = trace.paths.filter((p) => p.status !== 'eliminated');
-  const dead = trace.paths.filter((p) => p.status === 'eliminated');
+  const live = pathsOfDecision(trace, trace.chosenDecisionId);
+  const dead = trace.paths.filter(
+    (p) => p.decisionId === trace.chosenDecisionId && p.status === 'eliminated'
+  );
+  const others = trace.paths.length - trace.paths.filter((p) => p.decisionId === trace.chosenDecisionId).length;
 
   const handleManual = () => {
     const title = manualTitle.trim();
@@ -253,10 +256,10 @@ export default function ProjectionStep() {
 
       {error && <ErrorNote message={error} />}
 
-      {trace.paths.length === 0 && (
+      {pathsOfDecision(trace, trace.chosenDecisionId).length === 0 && (
         <Panel className="p-8 text-center">
           <p className="text-sm text-imagine-text-subtle mb-4">
-            Aucune trajectoire encore.
+            Aucune trajectoire pour cette décision.
           </p>
           <Button variant="primary" color="#A78BFA" onClick={() => project(4)}>
             Projeter les trajectoires
@@ -265,7 +268,7 @@ export default function ProjectionStep() {
       )}
 
       <div className="grid gap-5 md:grid-cols-2">
-        {trace.paths.map((path, i) => (
+        {pathsOfDecision(trace, trace.chosenDecisionId).map((path, i) => (
           <PathCard
             key={path.id}
             path={path}
@@ -289,6 +292,13 @@ export default function ProjectionStep() {
           />
         ))}
       </div>
+
+      {others > 0 && (
+        <p className="text-xs text-imagine-text-subtle">
+          {others} trajectoire{others > 1 ? 's' : ''} appartiennent à une autre décision. Tu
+          les retrouveras en changeant de question.
+        </p>
+      )}
 
       {dead.length > 0 && (
         <p className="text-xs text-imagine-text-subtle">

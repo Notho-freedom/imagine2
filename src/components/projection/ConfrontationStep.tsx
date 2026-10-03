@@ -13,7 +13,7 @@ import { useTrace } from '@/hooks/useTrace';
 import { cn } from '@/lib/utils';
 import { Button, ErrorNote, Panel, Quote, ScoreBar, Section, Tag, Thinking } from './ui';
 import CriteriaEditor from './CriteriaEditor';
-import { weightedTotal, pathEvidence, weakestEvidence, isBlind } from '@/lib/trace';
+import { weightedTotal, pathEvidence, weakestEvidence, isBlind, pathsOfDecision } from '@/lib/trace';
 
 export default function ConfrontationStep() {
   const trace = useImagineStore((s) => s.traces.find((t) => t.id === s.activeTraceId));
@@ -23,7 +23,9 @@ export default function ConfrontationStep() {
 
   if (!trace) return null;
 
-  const live = trace.paths.filter((p) => p.status !== 'eliminated');
+  const live = pathsOfDecision(trace, trace.chosenDecisionId).filter(
+    (p) => p.status !== 'eliminated'
+  );
   const c = trace.confrontation;
 
   /**

@@ -105,6 +105,8 @@ export interface DescentEntry {
  */
 export interface BranchPoint {
   id: string;
+  /** La trajectoire que ce virage a ouverte. Le lien est structurel. */
+  childPathId: string | null;
   /** Question ouverte qui a été tranchée ici */
   question: string;
   /** L'alternative qui n'a pas été prise */
@@ -124,6 +126,14 @@ export interface ThoughtPath extends PathMoves {
   parentPathId: string | null;
   /** Racine de la sous-trajectoire, pour le repliement dans le journal */
   rootPathId: string | null;
+  /**
+   * La décision que cette trajectoire explore.
+   * Deux trajectoires qui répondent à des questions différentes ne sont pas
+   * comparables : on ne confronte jamais des décisions différentes.
+   * `null` = la décision du tracé lui-même (une idée, ou la confusion non
+   * encore démêlée).
+   */
+  decisionId: string | null;
   color: string;
   title: string;
   thesis: string;

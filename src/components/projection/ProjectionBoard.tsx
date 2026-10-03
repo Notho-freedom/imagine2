@@ -22,6 +22,7 @@ import ConfrontationStep from './ConfrontationStep';
 import VerdictStep from './VerdictStep';
 import LedgerStep from './LedgerStep';
 import HypothesisBar from './HypothesisBar';
+import DecisionSwitcher from './DecisionSwitcher';
 import { StepMark } from './marks';
 import { Button, Empty, Tag } from './ui';
 
@@ -155,14 +156,17 @@ export default function ProjectionBoard() {
     <div className="w-full h-full flex bg-imagine-bg">
       {/* Rail d'étapes */}
       <nav className="w-[240px] shrink-0 border-r border-white/5 flex flex-col">
-        <div className="px-5 py-6 border-b border-white/5">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-imagine-text-subtle">
+        <div className="px-4 py-5 border-b border-white/5">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-imagine-text-subtle mb-1.5">
             Tracé
           </div>
-          <div className="mt-2 text-sm text-imagine-text leading-snug line-clamp-2">
+          <div className="text-sm text-imagine-text leading-snug line-clamp-2">
             {trace.title}
           </div>
         </div>
+
+        {/* Quand plusieurs questions sont emmêlées, on en travaille une */}
+        <DecisionSwitcher />
 
         <div className="flex-1 py-4 space-y-1 overflow-y-auto">
           {TRACE_STEPS.map((s) => {

@@ -359,6 +359,39 @@ export function isBlind(path: ThoughtPath): boolean {
 }
 
 // ========================================
+// Les décisions d'un tracé
+//
+// Une confusion démêlée contient plusieurs questions. On ne les résout pas
+// ensemble : ce serait comparer des réponses à des questions différentes.
+// ========================================
+
+export function pathsOfDecision(
+  trace: ThoughtTrace,
+  decisionId: string | null
+): ThoughtPath[] {
+  return trace.paths.filter((p) => (p.decisionId ?? null) === decisionId);
+}
+
+export function decisionsWithPaths(trace: ThoughtTrace) {
+  const byId = new Map<string, ThoughtPath[]>();
+  for (const p of trace.paths) {
+    const key = p.decisionId ?? '';
+    if (!byId.has(key)) byId.set(key, []);
+    byId.get(key)!.push(p);
+  }
+  return byId;
+}
+
+export function comparablePaths(
+  trace: ThoughtTrace,
+  decisionId: string | null
+): ThoughtPath[] {
+  return pathsOfDecision(trace, decisionId).filter(
+    (p) => p.status !== 'eliminated'
+  );
+}
+
+// ========================================
 // Ce que la réflexion a coûté
 //
 // Rien de nouveau à stocker : le journal contient déjà l'ordre et
@@ -491,6 +524,8 @@ export interface TraceLayout {
   sparkY: number;
   /** Racine de chaque trajectoire, pour la mise en évidence de lignée */
   lineageOf: Record<string, string>;
+  /** Décision à laquelle appartient chaque trajectoire */
+  decisionOf: Record<string, string | null>;
 }
 
 const centerY = (n: { y: number; h: number }) => n.y + n.h / 2;
@@ -501,6 +536,7 @@ export function traceLayout(trace: ThoughtTrace): TraceLayout {
   const nodes: TraceNode[] = [];
   const edges: TraceEdge[] = [];
   const lineageOf: Record<string, string> = {};
+  const decisionOf: Record<string, string | null> = {};
 
   let lane = 0;
   const topLanes: number[] = [];
@@ -527,6 +563,7 @@ export function traceLayout(trace: ThoughtTrace): TraceLayout {
   function placePath(path: ThoughtPath, depth: number, x0: number): TraceNode {
     const root = path.rootPathId ?? path.id;
     lineageOf[path.id] = root;
+    decisionOf[path.id] = path.decisionId ?? null;
 
     // La voie est réservée avant toute descente : les enfants reserve une voie
     // neuve, jamais celle de leur parent.
@@ -591,21 +628,23 @@ export function traceLayout(trace: ThoughtTrace): TraceLayout {
       const afterEntries =
         entryX + path.timeline.length * (ENTRY_NODE.w + 20) + (path.timeline.length ? 40 : 0);
 
-      children.forEach((child) => {
-        // La branche dont le chemin retenu correspond à cet enfant.
-        // Le chemin retenu est stocké sous forme de « titre — thèse » ; seul le
-        // début suffit à l'identifier, et c'est ce que le moteur a produit.
-        const branchIdx = path.branches.findIndex((b: BranchPoint) =>
-          b.chosen.startsWith(child.title)
-        );
-        // Un virage peut être posé au dernier passage : dans ce cas il s'ancre
-// sur ce passage, pas sur la trajectoire elle-même.
-const anchorIndex = Math.min(
-          path.branches[branchIdx].atEntryIndex,
-          Math.max(0, path.timeline.length - 1)
-        );
+children.forEach((child) => {
+        // Le lien branche → enfant est structurel. On ne compare plus des
+        // titres : une hypothèse longue tronque son titre et le rapprochement
+        // échouait.
+        let branch =
+          path.branches.find((b) => b.childPathId === child.id) ??
+          path.branches.find((b) => b.chosen.startsWith(child.title)) ??
+          null;
+
+        // Un virage peut être posé au dernier passage : dans ce cas il
+        // s'ancre sur ce passage, pas sur la trajectoire elle-même.
+        const anchorIndex = branch
+          ? Math.min(branch.atEntryIndex, Math.max(0, path.timeline.length - 1))
+          : -1;
+
         const forkEntry =
-          branchIdx >= 0
+          anchorIndex >= 0
             ? (nodes.find(
                 (n) =>
                   n.kind === 'entry' &&
@@ -616,6 +655,7 @@ const anchorIndex = Math.min(
 
         const childNode = placePath(child, depth + 1, afterEntries);
         link(forkEntry, childNode, 'fork', true);
+        branch = null;
       });
     }
 
@@ -661,7 +701,7 @@ const anchorIndex = Math.min(
   const width = nodes.reduce((m, n) => Math.max(m, n.x + n.w), 0) + 120;
   const height = Math.max(...nodes.map((n) => n.y + n.h), 0) + 120;
 
-  return { nodes, edges, width, height, sparkY, lineageOf };
+  return { nodes, edges, width, height, sparkY, lineageOf, decisionOf };
 }
 
 // ========================================
@@ -679,20 +719,6 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
 
   const indent = (path: ThoughtPath, depth: number) =>
     `${'  '.repeat(depth)}- **${path.title}**${path.status === 'eliminated' ? ' *(écartée)*' : ''} — ${path.thesis}`;
-
-  /** Parcours en profondeur des sous-trajectoires */
-  const walk = (
-    parentId: string | null,
-    depth: number,
-    render: (p: ThoughtPath, depth: number) => void
-  ) => {
-    trace.paths
-      .filter((p) => p.parentPathId === parentId)
-      .forEach((p) => {
-        render(p, depth);
-        walk(p.id, depth + 1, render);
-      });
-  };
 
   lines.push(`# ${trace.title}`);
   lines.push('');
@@ -788,29 +814,60 @@ export function traceToMarkdown(trace: ThoughtTrace): string {
 
     const hasChildren = trace.paths.some((p) => p.parentPathId !== null);
 
-    walk(null, 0, (p, depth) => {
-      const heading = depth === 0 ? '###' : '####';
-      lines.push(`${heading} ${indent(p, depth)}`);
-      lines.push('');
-      lines.push(`**Angle.** ${p.angle}`);
-      lines.push('');
-      lines.push('**Geste central**');
-      lines.push('');
-      lines.push(bullets(p.keyMoves));
-      lines.push('');
-      lines.push('**Risques**');
-      lines.push('');
-      lines.push(bullets(p.risks));
-      lines.push('');
-      lines.push(`**Ce qu'elle produit.** ${p.payoff}`);
-      lines.push('');
-      lines.push(`**En quoi elle diverge.** ${p.divergence}`);
-      lines.push('');
-      if (!hasChildren) {
-        lines.push(`**Statut.** ${PATH_STATUS_LABEL[p.status]}`);
+    // Un tracé peut contenir plusieurs décisions : on ne mélange pas.
+    const byDecision = new Map<string, ThoughtPath[]>();
+    for (const p of trace.paths) {
+      const key = p.decisionId ?? '';
+      if (!byDecision.has(key)) byDecision.set(key, []);
+      byDecision.get(key)!.push(p);
+    }
+    const orderedKeys = [
+      ...trace.decisions.map((d) => d.id).filter((id) => byDecision.has(id)),
+      ...(byDecision.has('') ? [''] : []),
+    ];
+
+    for (const key of orderedKeys) {
+      const scoped = byDecision.get(key)!;
+      if (scoped.length === 0) continue;
+
+      if (trace.decisions.length > 1) {
+        const label =
+          trace.decisions.find((d) => d.id === key)?.title ?? 'Trajectoires';
+        lines.push(`### ${label}`);
         lines.push('');
       }
-    });
+
+      const subWalk = (parentId: string | null, depth: number) => {
+        scoped
+          .filter((p) => p.parentPathId === parentId)
+          .forEach((p) => {
+            const heading = depth === 0 ? '####' : '#####';
+            lines.push(`${heading} ${indent(p, depth)}`);
+            lines.push('');
+            lines.push(`**Angle.** ${p.angle}`);
+            lines.push('');
+            lines.push('**Geste central**');
+            lines.push('');
+            lines.push(bullets(p.keyMoves));
+            lines.push('');
+            lines.push('**Risques**');
+            lines.push('');
+            lines.push(bullets(p.risks));
+            lines.push('');
+            lines.push(`**Ce qu'elle produit.** ${p.payoff}`);
+            lines.push('');
+            lines.push(`**En quoi elle diverge.** ${p.divergence}`);
+            lines.push('');
+            if (!hasChildren) {
+              lines.push(`**Statut.** ${PATH_STATUS_LABEL[p.status]}`);
+              lines.push('');
+            }
+            subWalk(p.id, depth + 1);
+          });
+      };
+
+      subWalk(null, 0);
+    }
   }
 
   const allBranched = trace.paths.filter((p) => p.branches.length > 0);

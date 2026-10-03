@@ -7,7 +7,7 @@ import { useCallback, useState } from 'react';
 import { useImagineStore } from '@/store';
 import { generateId } from '@/lib/utils';
 import { GROQ_MODEL } from '@/lib/groq';
-import { DEFAULT_CRITERIA, makeEvent } from '@/lib/trace';
+import { DEFAULT_CRITERIA, makeEvent, comparablePaths } from '@/lib/trace';
 import type {
   Confrontation,
   DescentPayload,
@@ -420,6 +420,7 @@ const findDecision = useCallback(async () => {
           // raisonnement sur le renoncement l'est.
           branch: {
             id: '',
+            childPathId: null,
             question: result.branch.question,
             alternative: `${path.title} — ${path.thesis}`,
             chosen: `${result.title} — ${result.thesis}`,
@@ -453,9 +454,11 @@ const findDecision = useCallback(async () => {
   const confront = useCallback(async () => {
     if (!trace) return null;
 
-    const live = trace.paths.filter((p) => p.status !== 'eliminated');
+    // On ne confronte que des trajectoires qui répondent à la même question.
+    // Comparer des réponses à des questions différentes n'aurait aucun sens.
+    const live = comparablePaths(trace, trace.chosenDecisionId);
     if (live.length < 2) {
-      setError('Il faut au moins deux trajectoires vivantes pour confronter');
+      setError('Il faut au moins deux trajectoires vivantes pour confronter cette décision');
       return null;
     }
 
@@ -492,11 +495,16 @@ const findDecision = useCallback(async () => {
       model: GROQ_MODEL,
     };
 
-    setConfrontation(trace.id, confrontation);
     appendEvent(
       makeEvent('confrontation', 'ai', 'Confrontation établie', {
         detail: confrontation.discriminator,
       })
+    );
+    // On ne compare que les trajectoires réellement confrontées
+    setConfrontation(
+      trace.id,
+      confrontation,
+      live.map((p) => p.id)
     );
     setTraceStep(5);
     return confrontation;
@@ -509,7 +517,7 @@ const findDecision = useCallback(async () => {
   const arbitrate = useCallback(async () => {
     if (!trace) return null;
 
-    const live = trace.paths.filter((p) => p.status !== 'eliminated');
+    const live = comparablePaths(trace, trace.chosenDecisionId);
     if (live.length === 0) {
       setError('Aucune trajectoire vivante à arbitrer');
       return null;
@@ -651,6 +659,7 @@ const hypothesize = useCallback(
             entryIndex: parent.timeline.length,
             branch: {
               id: '',
+              childPathId: null,
               question: clean,
               alternative: `${parent.title} — ${parent.thesis}`,
               chosen: clean,
